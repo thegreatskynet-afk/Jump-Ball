@@ -319,6 +319,28 @@ input[type=range]{accent-color:var(--a);width:100%}
 .enter .rise{animation:rise .55s var(--ease) both;animation-delay:calc(var(--i,0)*70ms)}
 .boot .board,.boot .top{animation:rise .7s var(--ease) both}
 
+
+/* ---------- linked league ---------- */
+.lform{margin-bottom:14px} .lform h3{margin-bottom:10px}
+.lgrid{display:grid;grid-template-columns:200px 1fr 1fr;gap:10px;margin-bottom:10px}
+.lgrid .field select,.lgrid .field input{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px;width:100%}
+.lpaste{display:grid;grid-template-columns:200px 1fr;gap:8px;margin-bottom:8px}
+.lpaste input,.lpaste textarea{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px;width:100%;resize:vertical}
+.chip.on{border-color:var(--a);background:var(--a-soft)}
+.linkbtn{background:none;border:0;padding:0;font-weight:600}
+.lhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.lhead h3{display:flex;align-items:center;gap:4px}
+.lrank{text-align:right} .lrank b{display:block;font-family:var(--font-display);font-size:34px;line-height:1.05} .lrank b i{font-style:normal}
+.lrank small{display:block;font-size:12.5px;font-weight:600}
+.lroster{display:grid;gap:4px;max-height:430px;overflow-y:auto;padding-right:4px}
+.lrow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 8px;border-radius:var(--r-s);border:1px solid transparent;transition:background .2s,border-color .2s}
+.lrow:hover{background:var(--surface-2)} .lrow.on{background:var(--soft,var(--a-soft));border-color:var(--c,var(--a))}
+.lrow small{display:block;color:var(--muted);font-size:12px} .lrow .lv{font-family:var(--font-display);font-size:20px;font-weight:700}
+.lrow .btn{padding:5px 12px;min-width:76px;justify-content:center}
+.lrow.on .btn.primary{background:var(--c);border-color:var(--c)}
+.lcard{border-top:3px solid var(--c)}
+@media (max-width:640px){ .lgrid,.lpaste{grid-template-columns:1fr} .lrank{text-align:left} }
+
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes beat{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--good) 70%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
 @keyframes ticker{to{transform:translateX(-50%)}}
@@ -376,7 +398,7 @@ input[type=range]{accent-color:var(--a);width:100%}
   </div>
   <div class="ticker" id="ticker" hidden aria-label="Latest injury report updates"><div class="ticker-track" id="tickerTrack"></div></div>
   <nav class="nav" aria-label="Sections">
-    <a href="#board">Trade board</a><a href="#alerts-sec">Injury alerts</a><a href="#verdict-sec">Verdict</a><a href="#charts-sec">Charts</a><a href="#players-sec">Players</a><a href="#whatif-sec">What-if</a><a href="#report-sec">Report</a><a href="#method-sec">How it works</a>
+    <a href="#board">Trade board</a><a href="#league-sec">Your league</a><a href="#alerts-sec">Injury alerts</a><a href="#verdict-sec">Verdict</a><a href="#charts-sec">Charts</a><a href="#players-sec">Players</a><a href="#whatif-sec">What-if</a><a href="#report-sec">Report</a><a href="#method-sec">How it works</a>
   </nav>
 </header>
 <main class="wrap boot" id="app">
@@ -401,6 +423,7 @@ input[type=range]{accent-color:var(--a);width:100%}
       <div class="cards" id="cards-b"></div>
     </div>
   </div>
+  <section id="league-sec"><div class="sec-head"><div><h2>Your league</h2><p>Link your fantasy league to load every roster and your scoring. Pick your team and your trade partner, and see where both teams would land in your league after the deal.</p></div></div><div id="leaguebox"></div></section>
   <section id="alerts-sec"><div class="sec-head"><div><h2>Injury and availability alerts</h2><p>Every player on the board is checked against the latest injury report each time it refreshes. Red means expected missed games, yellow means uncertain, orange means recently back.</p></div></div><div id="alerts"></div></section>
   <section id="verdict-sec"><div class="sec-head"><div><h2>Verdict and value</h2><p>All values are on one scale: 100 is the best healthy player in your scoring format for the rest of the season.</p></div></div><div id="verdict"></div></section>
   <section id="charts-sec"><div class="sec-head"><div><h2>Trade comparison</h2><p>Blue is what you get. Pink is what you give.</p></div></div><div id="dash" class="dash"></div></section>
@@ -1259,6 +1282,7 @@ X.search = function (q, exclude) {
 };
 
 /* ---------- compute ---------- */
+X.buildP = function (id) { return buildP(id); };
 function buildP(id) {
   const pl = state.pool.get(id); if (!pl) return null;
   const det = D.details.get(id); const sc = D.schedules.get(pl.teamId); const now = Date.now();
@@ -2022,7 +2046,8 @@ function paintSettings() {
 function drawer(on) { $('#drawer').classList.toggle('on', on); $('#scrim').classList.toggle('on', on); if (on) { paintSettings(); $('#closeSettings').focus(); } }
 
 /* ---------- render all ---------- */
-function analysis(animate) { paintAlerts(animate); paintVerdict(animate); paintDash(animate); paintPlayers(animate); paintScen(); paintWhatIf(); paintReport(animate); paintLeague(); }
+X.hooks = X.hooks || { analysis: [], boot: [] };
+function analysis(animate) { X.hooks.analysis.forEach(fn => { try { fn(animate); } catch (e) { console.error(e); } }); paintAlerts(animate); paintVerdict(animate); paintDash(animate); paintPlayers(animate); paintScen(); paintWhatIf(); paintReport(animate); paintLeague(); }
 X.render = function (animate, fresh) { if (state.fatal) return; paintBoard(fresh); analysis(animate); };
 function recompute(animate) { X.compute(); X.render(animate, false); X.save(); }
 
@@ -2191,10 +2216,366 @@ async function boot() {
   X.compute(); X.render(false, true); paintTicker(); paintMethod(); paintLive();
   $('#app').classList.remove('boot');
   X.active().forEach(id => ensureDetail(id));
+  X.hooks.boot.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
   setInterval(() => { if (!document.hidden) refresh(false); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
 }
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+X.ui = { $, $$, I, tip, pill, num, paint, countUp, toast, addPlayer, removePlayer, recompute, ensureDetail, render: (a, f) => X.render(a, f), reduced };
+X.hooks = X.hooks || { analysis: [], boot: [] };
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
+})();
+
+/* Jump Ball — linked fantasy leagues: import rosters and scoring, then show how a trade moves both teams. */
+(function () {
+'use strict';
+const JB = window.JB, D = JB.data, X = JB.app, state = X.state, esc = X.esc, f0 = X.f0, f1 = X.f1, DAY = JB.DAY;
+const U = X.ui, $ = U.$;
+const LKEY = 'jumpball.leagues.v1';
+const L = X.leagues = { list: [], active: -1, data: null, loading: false, error: '', cache: null, gen: 0 };
+try { const s = JSON.parse(localStorage.getItem(LKEY)) || {}; L.list = s.list || []; L.active = s.active != null ? s.active : -1; } catch (e) { /* convenience only */ }
+const saveL = () => { try { localStorage.setItem(LKEY, JSON.stringify({ list: L.list, active: L.active })); } catch (e) { /* optional */ } };
+const cur = () => L.list[L.active] || null;
+const PLAT = { espn: 'ESPN', sleeper: 'Sleeper', fantrax: 'Fantrax', paste: 'Yahoo or other (pasted)' };
+
+/* ---------- reading what the person typed ---------- */
+function parseInput(platform, text) {
+  const t = String(text || '').trim(); let m;
+  if (platform === 'espn') { m = t.match(/leagueId=(\d+)/i) || t.match(/^(\d{3,})$/); return m ? m[1] : null; }
+  if (platform === 'sleeper') { m = t.match(/leagues?\/(\d{6,})/i) || t.match(/^(\d{6,})$/); return m ? m[1] : null; }
+  if (platform === 'fantrax') { m = t.match(/league\/([a-z0-9]{6,})/i) || t.match(/leagueId=([a-z0-9]{6,})/i) || t.match(/^([a-z0-9]{6,})$/i); return m ? m[1] : null; }
+  return null;
+}
+function guessPlatform(text) { const t = String(text || ''); if (/espn\.com/i.test(t)) return 'espn'; if (/sleeper\.(app|com)/i.test(t)) return 'sleeper'; if (/fantrax\.com/i.test(t)) return 'fantrax'; if (/yahoo\.com/i.test(t)) return 'paste'; return null; }
+
+/* ---------- matching names to players ---------- */
+let nameIx = null, nameIxSize = 0;
+const stripSuffix = k => k.replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '').replace(/\s+/g, ' ').trim();
+function index() {
+  if (nameIx && nameIxSize === state.pool.size) return nameIx;
+  nameIx = new Map(); nameIxSize = state.pool.size;
+  state.pool.forEach(p => { if (!p.key) return; [p.key, stripSuffix(p.key)].forEach(k => { if (k && !nameIx.has(k)) nameIx.set(k, p.id); }); });
+  return nameIx;
+}
+function byName(name) {
+  if (!name) return null; let n = String(name);
+  if (/,/.test(n)) { const [last, first] = n.split(','); n = (first || '').trim() + ' ' + last.trim(); }
+  const k = D.norm(n); const ix = index(); return ix.get(k) || ix.get(stripSuffix(k)) || null;
+}
+function scanText(text) {
+  const t = ' ' + D.norm(String(text || '').replace(/[\r\n\t|,;•·]+/g, ' ')).replace(/\s+/g, ' ') + ' ';
+  const hits = []; const ix = index();
+  ix.forEach((id, k) => { if (k.length < 6 || hits.some(h => h.id === id)) return; const i = t.indexOf(' ' + k + ' '); if (i >= 0) hits.push({ id, at: i, len: k.length }); });
+  hits.sort((a, b) => a.at - b.at || b.len - a.len);
+  const out = []; let end = -1; hits.forEach(h => { if (h.at >= end || !out.length) { out.push(h.id); end = h.at + h.len; } else if (h.len > 0 && h.at >= end - 1) out.push(h.id); });
+  return Array.from(new Set(out));
+}
+function addStub(id, name, extra) {
+  if (state.pool.has(id)) return id;
+  state.pool.set(id, Object.assign({ id, name, shortName: name, first: name.split(' ')[0], last: name.split(' ').slice(1).join(' '), pos: '', age: null, teamId: '', teamAbbr: '', teamName: '', cur: null, prev: null, key: D.norm(name), noGames: true, stub: true }, extra || {}));
+  return id;
+}
+
+/* ---------- ESPN ---------- */
+const ESPN_STAT = { 0: 'pts', 1: 'blk', 2: 'stl', 3: 'ast', 6: 'reb', 11: 'tov', 13: 'fgm', 14: 'fga', 15: 'ftm', 16: 'fta', 17: 'tpm', 19: 'fg', 20: 'ft' };
+const ESPN_NAME = { 4: 'offensive rebounds', 5: 'defensive rebounds', 18: 'threes attempted', 21: 'three-point %', 37: 'double-doubles', 38: 'triple-doubles', 40: 'minutes', 9: 'fouls', 7: 'ejections', 8: 'flagrant fouls', 10: 'technical fouls', 12: 'disqualifications', 22: 'adjusted FG%', 41: 'games started', 42: 'games played' };
+const ESPN_POS = { 1: 'PG', 2: 'SG', 3: 'SF', 4: 'PF', 5: 'C' };
+async function getJSON(url) {
+  let r; try { r = await fetch(url, { cache: 'no-store' }); } catch (e) { const er = new Error('The browser could not reach the site. Check your connection and try again.'); er.net = true; throw er; }
+  let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+  if (!r.ok) { const er = new Error((j && j.messages && j.messages[0]) || ('HTTP ' + r.status)); er.http = r.status; er.body = j; throw er; }
+  return j;
+}
+async function loadEspn(id) {
+  const yr = state.season.year; const base = 'https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/' + yr + '/segments/0/leagues/' + id;
+  let j;
+  try { j = await getJSON(base + '?view=mTeam&view=mRoster&view=mSettings'); }
+  catch (e) {
+    if (e.http === 401) throw new Error('This ESPN league is private, so no web page can read it. The league manager can open League → Settings → Basic Settings and turn on "Make League Viewable to Public". It only lets people view the league, not change it.');
+    if (e.http === 404) throw new Error('ESPN has no ' + (yr - 1) + '-' + String(yr).slice(2) + ' basketball league with ID ' + id + '. Check the number after leagueId= in your league page\'s address.');
+    throw e;
+  }
+  const s = j.settings || {}, sc = s.scoringSettings || {}, rs = s.rosterSettings || {};
+  const members = new Map((j.members || []).map(m => [m.id, m.displayName || ((m.firstName || '') + ' ' + (m.lastName || '')).trim()]));
+  const teams = (j.teams || []).map(t => {
+    const ids = [];
+    ((t.roster || {}).entries || []).forEach(en => {
+      const p = (en.playerPoolEntry || {}).player || {}; const pid = String(en.playerId || p.id || ''); if (!pid) return;
+      if (!state.pool.has(pid)) { const nb = byName(p.fullName); if (nb) { ids.push(nb); return; } addStub(pid, p.fullName || 'Player ' + pid, { pos: ESPN_POS[p.defaultPositionId] || '', teamId: p.proTeamId ? String(p.proTeamId) : '' }); }
+      ids.push(pid);
+    });
+    const rec = (t.record || {}).overall || {};
+    return { id: String(t.id), name: t.name || [t.location, t.nickname].filter(Boolean).join(' ') || ('Team ' + t.id), abbrev: t.abbrev || '', owner: (t.owners || []).map(o => members.get(o)).filter(Boolean).join(', '), record: rec.wins != null ? rec.wins + '-' + rec.losses + (rec.ties ? '-' + rec.ties : '') : '', ids };
+  });
+  // scoring
+  const items = sc.scoringItems || []; const type = String(sc.scoringType || '');
+  const pts = /POINTS/.test(type); const skipped = []; const set = { teams: s.size || teams.length };
+  const slots = rs.lineupSlotCounts || {}; let tot = 0, bench = 0, ir = 0; Object.keys(slots).forEach(k => { const n = +slots[k] || 0; tot += n; if (k === '12') bench += n; if (k === '13') ir += n; });
+  if (tot) { set.roster = tot - ir; set.starters = Math.max(1, tot - bench - ir); }
+  if (pts) {
+    const w = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 }; let o = 0, d = 0;
+    items.forEach(i => { const k = ESPN_STAT[i.statId]; const v = +i.points || 0; if (k && k in w) w[k] += v; else if (i.statId === 4) o = v; else if (i.statId === 5) d = v; else if (v) skipped.push((ESPN_NAME[i.statId] || 'stat ' + i.statId) + ' (' + v + ')'); });
+    if (o || d) { w.reb += 0.25 * o + 0.75 * d; skipped.push('offensive and defensive rebounds are combined (about 25% offensive)'); }
+    set.mode = 'points'; set.preset = 'custom'; set.pw = w;
+  } else {
+    const cw = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, fg: 0, ft: 0, tov: 0 };
+    items.forEach(i => { const k = ESPN_STAT[i.statId]; if (k && k in cw) cw[k] = 1; else skipped.push(ESPN_NAME[i.statId] || 'stat ' + i.statId); });
+    const on = Object.keys(cw).filter(k => cw[k]); const nine = ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'fg', 'ft', 'tov'];
+    if (on.length === 9) set.mode = 'cat9'; else if (on.length === 8 && !cw.tov) set.mode = 'cat8'; else set.mode = 'custom';
+    set.cw = Object.assign({}, cw); if (!on.length) { set.mode = 'cat9'; set.cw = Object.fromEntries(nine.map(k => [k, 1])); }
+  }
+  return { platform: 'espn', id, name: s.name || 'ESPN league ' + id, teams, settings: set, skipped, scoringLabel: pts ? 'points' : (type.indexOf('ROTO') >= 0 ? 'rotisserie categories' : 'head-to-head categories'), url: 'https://fantasy.espn.com/basketball/league?leagueId=' + id };
+}
+
+/* ---------- Sleeper ---------- */
+let sleeperPlayers = null;
+async function loadSleeper(id) {
+  const B = 'https://api.sleeper.app/v1';
+  const [lg, rosters, users] = await Promise.all([getJSON(B + '/league/' + id), getJSON(B + '/league/' + id + '/rosters'), getJSON(B + '/league/' + id + '/users')]).catch(e => { if (e.http === 404 || e.http === 400) throw new Error('Sleeper has no league with ID ' + id + '.'); throw e; });
+  if (!lg) throw new Error('Sleeper has no league with ID ' + id + '.');
+  if (lg.sport && lg.sport !== 'nba') throw new Error('That Sleeper league is for ' + String(lg.sport).toUpperCase() + ', not the NBA.');
+  if (!sleeperPlayers) sleeperPlayers = await getJSON(B + '/players/nba');
+  const um = new Map((users || []).map(u => [u.user_id, u]));
+  const teams = (rosters || []).map(r => {
+    const u = um.get(r.owner_id) || {}; const ids = [];
+    (r.players || []).forEach(sid => { const p = (sleeperPlayers || {})[sid] || {}; const nm = p.full_name || ((p.first_name || '') + ' ' + (p.last_name || '')).trim();
+      const e = p.espn_id != null && state.pool.has(String(p.espn_id)) ? String(p.espn_id) : byName(nm); ids.push(e || addStub('sl-' + sid, nm || 'Player ' + sid, { pos: (p.fantasy_positions || [])[0] || '' })); });
+    const st = r.settings || {};
+    return { id: String(r.roster_id), name: (u.metadata && u.metadata.team_name) || u.display_name || ('Team ' + r.roster_id), owner: u.display_name || '', record: st.wins != null ? st.wins + '-' + st.losses : '', ids };
+  });
+  const ss = lg.scoring_settings || {}; const map = { pts: 'pts', reb: 'reb', ast: 'ast', stl: 'stl', blk: 'blk', to: 'tov', tpm: 'tpm', '3pm': 'tpm', fg3m: 'tpm', fgm: 'fgm', fga: 'fga', ftm: 'ftm', fta: 'fta' };
+  const w = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 }; const skipped = [];
+  Object.keys(ss).forEach(k => { const v = +ss[k] || 0; if (!v) return; if (map[k]) w[map[k]] += v; else skipped.push(k.replace(/_/g, ' ') + ' (' + v + ')'); });
+  const pos = lg.roster_positions || []; const set = { teams: lg.total_rosters || teams.length, roster: pos.filter(x => x !== 'IR').length || undefined, starters: pos.filter(x => x !== 'BN' && x !== 'IR' && x !== 'TAXI').length || undefined };
+  if (Object.values(w).some(Boolean)) { set.mode = 'points'; set.preset = 'custom'; set.pw = w; }
+  return { platform: 'sleeper', id, name: lg.name || 'Sleeper league', teams, settings: set, skipped, scoringLabel: set.mode === 'points' ? 'points' : 'unknown scoring', url: 'https://sleeper.com/leagues/' + id };
+}
+
+/* ---------- Fantrax ---------- */
+let fantraxIds = null;
+async function loadFantrax(id) {
+  const B = 'https://www.fantrax.com/fxea/general';
+  const [info, ros] = await Promise.all([getJSON(B + '/getLeagueInfo?leagueId=' + id), getJSON(B + '/getTeamRosters?leagueId=' + id)]);
+  if (!ros || !ros.rosters) throw new Error('Fantrax did not return rosters for league ' + id + '. The league may be private, or the ID may be wrong.');
+  if (!fantraxIds) fantraxIds = await getJSON(B + '/getPlayerIds?sport=NBA');
+  const teams = Object.keys(ros.rosters).map(tid => {
+    const t = ros.rosters[tid] || {}; const ids = [];
+    (t.rosterItems || []).forEach(it => { const p = (fantraxIds || {})[it.id] || {}; const nm = p.name || ''; ids.push(byName(nm) || addStub('fx-' + it.id, nm ? nm.split(',').reverse().join(' ').trim() : 'Player ' + it.id, { pos: p.position || it.position || '' })); });
+    const ti = info && info.teamInfo && info.teamInfo[tid];
+    return { id: tid, name: t.teamName || (ti && ti.name) || ('Team ' + tid), owner: '', record: '', ids };
+  });
+  return { platform: 'fantrax', id, name: (info && (info.leagueName || info.name)) || 'Fantrax league', teams, settings: { teams: teams.length }, skipped: ['Fantrax does not share scoring settings with outside pages, so set your scoring under League settings'], scoringLabel: 'set it yourself', url: 'https://www.fantrax.com/fantasy/league/' + id };
+}
+
+/* ---------- pasted rosters (Yahoo and anything else) ---------- */
+function loadPaste(entry) {
+  const teams = (entry.teams || []).map((t, i) => ({ id: 'p' + i, name: t.name || 'Team ' + (i + 1), owner: '', record: '', ids: scanText(t.text), text: t.text }));
+  return { platform: 'paste', id: entry.id, name: entry.name || 'My league', teams, settings: { teams: Math.max(teams.length, 2) }, skipped: [], scoringLabel: 'set it yourself', url: '' };
+}
+
+async function load(entry, quiet) {
+  L.loading = true; L.error = ''; if (!quiet) paintL();
+  try {
+    let d;
+    if (entry.platform === 'espn') d = await loadEspn(entry.id);
+    else if (entry.platform === 'sleeper') d = await loadSleeper(entry.id);
+    else if (entry.platform === 'fantrax') d = await loadFantrax(entry.id);
+    else d = loadPaste(entry);
+    d.at = Date.now(); L.data = d; entry.name = d.name;
+    if (entry.my == null || !d.teams.some(t => t.id === entry.my)) entry.my = null;
+    if (entry.partner != null && !d.teams.some(t => t.id === entry.partner)) entry.partner = null;
+    const teams = new Set(); d.teams.forEach(t => t.ids.forEach(id => { const p = state.pool.get(id); if (p && p.teamId) teams.add(p.teamId); }));
+    const year = state.season.year; const list = Array.from(teams).filter(t => !D.schedules.has(t));
+    for (let i = 0; i < list.length; i += 6) await Promise.all(list.slice(i, i + 6).map(t => D.loadSchedule(t, year).catch(() => null)));
+    saveL(); syncRoster();
+  } catch (e) { L.error = e.message || String(e); L.data = null; }
+  L.loading = false; L.cache = null; X.compute(); U.render(false, false); paintL(true);
+}
+function syncRoster() {
+  const e = cur(), d = L.data; if (!e || !d || e.my == null) return; const t = d.teams.find(x => x.id === e.my); if (!t) return;
+  state.roster = t.ids.filter(id => state.pool.get(id) && !state.pool.get(id).stub); X.save();
+}
+function applyScoring() {
+  const d = L.data; if (!d) return; const s = d.settings || {}; const S = state.S;
+  ['mode', 'preset', 'teams', 'roster', 'starters'].forEach(k => { if (s[k] != null) S[k] = s[k]; });
+  if (s.pw) S.pw = Object.assign({}, S.pw, s.pw); if (s.cw) S.cw = Object.assign({}, S.cw, s.cw);
+  X.save(); L.cache = null; U.recompute(true); U.toast('Using ' + d.name + '\'s scoring and roster size.');
+}
+
+/* ---------- team projections inside the league ---------- */
+function weeksLeft() {
+  let end = 0; D.schedules.forEach(s => { const e = s.events; if (e && e.length) end = Math.max(end, e[e.length - 1].date); });
+  return end > Date.now() ? Math.max(1, (end - Date.now()) / (7 * DAY)) : Math.max(1, state.ctx.typicalRemaining / 3.5);
+}
+function evalId(id) {
+  if (!L.cache || L.cache.at !== state.lastCompute) L.cache = { at: state.lastCompute, E: new Map() };
+  if (state.E.has(id)) return state.E.get(id);
+  if (L.cache.E.has(id)) return L.cache.E.get(id);
+  const P = X.buildP(id); const E = P ? JB.evaluatePlayer(P, state.S, state.ctx, Date.now()) : null; L.cache.E.set(id, E); return E;
+}
+const COUNT_CATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov', 'fgm', 'fga', 'ftm', 'fta'];
+function profile(ids, wk) {
+  const S = state.S; const all = ids.map(id => ({ id, e: evalId(id) })).filter(x => x.e && x.e.proj);
+  const starters = all.slice().sort((a, b) => b.e.tv.risk - a.e.tv.risk).slice(0, S.starters);
+  const c = {}; COUNT_CATS.forEach(k => { c[k] = 0; }); let fp = 0;
+  starters.forEach(({ e }) => { const g = e.h.ros.expGames / wk, l = e.proj.line; COUNT_CATS.forEach(k => { c[k] += (+l[k] || 0) * g; }); fp += e.fpg * g; });
+  c.fg = c.fga > 0 ? c.fgm / c.fga : null; c.ft = c.fta > 0 ? c.ftm / c.fta : null;
+  return { ids, starters: starters.map(x => x.id), cats: c, fp, value: JB.sum(starters.map(x => x.e.tv.risk)), d14: JB.sum(starters.map(x => x.e.h.d14.varInj)), unknown: ids.length - all.length };
+}
+function cats() { const S = state.S; if (S.mode === 'points') return []; const cw = JB.catWeights(S); return JB.CATS.filter(c => (cw[c.k] || 0) > 0); }
+function rankAll(profiles) {
+  // profiles: Map teamId -> profile. Returns per team: cat ranks, roto score, overall rank.
+  const ids = Array.from(profiles.keys()); const S = state.S; const cs = cats(); const n = ids.length; const out = new Map(ids.map(id => [id, { ranks: {}, score: 0 }]));
+  if (S.mode === 'points') {
+    ids.slice().sort((a, b) => profiles.get(b).fp - profiles.get(a).fp).forEach((id, i) => { out.get(id).overall = i + 1; out.get(id).score = profiles.get(id).fp; });
+    return out;
+  }
+  const cw = JB.catWeights(S);
+  cs.forEach(c => {
+    const v = id => { const x = profiles.get(id).cats[c.k]; return x == null ? -Infinity : (c.k === 'tov' ? -x : x); };
+    const sorted = ids.slice().sort((a, b) => v(b) - v(a));
+    sorted.forEach((id, i) => { let r = i + 1; while (r > 1 && v(sorted[r - 2]) === v(id)) r--; out.get(id).ranks[c.k] = r; out.get(id).score += (cw[c.k] || 1) * (n - r + 1); });
+  });
+  ids.slice().sort((a, b) => out.get(b).score - out.get(a).score).forEach((id, i) => { out.get(id).overall = i + 1; });
+  return out;
+}
+L.impact = function () {
+  const e = cur(), d = L.data; if (!e || !d || e.my == null || e.partner == null || e.my === e.partner) return null;
+  const my = d.teams.find(t => t.id === e.my), pt = d.teams.find(t => t.id === e.partner); if (!my || !pt) return null;
+  const wk = weeksLeft(); const before = new Map(), after = new Map();
+  d.teams.forEach(t => { const p = profile(t.ids, wk); before.set(t.id, p); after.set(t.id, p); });
+  const A = state.A, B = state.B;
+  const myAfter = my.ids.filter(id => B.indexOf(id) < 0).concat(A.filter(id => my.ids.indexOf(id) < 0));
+  const ptAfter = pt.ids.filter(id => A.indexOf(id) < 0).concat(B.filter(id => pt.ids.indexOf(id) < 0));
+  after.set(my.id, profile(myAfter, wk)); after.set(pt.id, profile(ptAfter, wk));
+  const rb = rankAll(before), ra = rankAll(after);
+  const notMine = B.filter(id => my.ids.indexOf(id) < 0), notTheirs = A.filter(id => pt.ids.indexOf(id) < 0);
+  const extra = Math.max(0, myAfter.length - my.ids.length);
+  return { d, my, pt, before, after, rb, ra, wk, notMine, notTheirs, extra, n: d.teams.length };
+};
+
+/* ---------- rendering ---------- */
+const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+const pctOr = (v, isPct) => v == null ? '–' : isPct ? X.fp(v) : f1(v);
+function teamOpt(d, sel, none) { return '<option value="">' + none + '</option>' + d.teams.map(t => '<option value="' + esc(t.id) + '"' + (t.id === sel ? ' selected' : '') + '>' + esc(t.name) + (t.owner ? ' (' + esc(t.owner) + ')' : '') + '</option>').join(''); }
+function rosterList(t, side) {
+  const inTrade = side === 'b' ? state.B : state.A;
+  return '<div class="lroster">' + t.ids.map(id => {
+    const p = state.pool.get(id); if (!p) return ''; const e = evalId(id); const on = inTrade.indexOf(id) >= 0;
+    const st = e ? e.status : JB.STATUS.AVAILABLE;
+    return '<div class="lrow' + (on ? ' on' : '') + '"><div><b>' + esc(p.name) + '</b> ' + (st.alert !== 'green' ? '<span class="pill ' + st.alert + '" style="animation:none">' + esc(st.label.toUpperCase()) + '</span>' : '') + '<small>' + esc([p.teamAbbr, p.pos].filter(Boolean).join(' · ')) + (p.stub ? ' · no NBA stats yet' : '') + '</small></div><span class="lv">' + (e && e.proj ? f1(e.tv.risk) : '–') + '</span>'
+      + (p.stub ? '<span></span>' : '<button class="btn' + (on ? ' primary' : '') + '" data-ltog="' + side + ',' + esc(id) + '" aria-pressed="' + on + '">' + (on ? (side === 'b' ? 'Giving' : 'Getting') : (side === 'b' ? 'Give' : 'Get')) + '</button>') + '</div>';
+  }).join('') + '</div>';
+}
+function standingsChart(I) {
+  const ids = I.d.teams.map(t => t.id); const pts = state.S.mode === 'points';
+  const val = (r, p, id) => pts ? p.get(id).fp : r.get(id).score;
+  const rows = ids.map(id => ({ id, b: val(I.rb, I.before, id), a: val(I.ra, I.after, id), t: I.d.teams.find(t => t.id === id) })).sort((x, y) => y.a - x.a);
+  const mx = Math.max.apply(null, rows.map(r => Math.max(r.a, r.b)).concat([1e-9])); const W = 1000, lab = 230, rh = 26, H = rows.length * rh + 6, sc = v => (W - lab - 70) * Math.max(0, v) / mx;
+  let s = '';
+  rows.forEach((r, i) => {
+    const y = i * rh + 4, k = r.id === I.my.id ? 'a' : r.id === I.pt.id ? 'b' : null; const fill = k ? 'var(--' + k + ')' : 'var(--muted)'; const op = k ? 1 : .35;
+    const tipH = '<b>' + esc(r.t.name) + '</b><div class="row"><span>Now</span><b>' + (pts ? f1(r.b) + ' FP a week' : f1(r.b) + ' category points') + '</b></div><div class="row"><span>After the trade</span><b>' + (pts ? f1(r.a) + ' FP a week' : f1(r.a) + ' category points') + '</b></div><div class="row"><span>Projected finish</span><b>' + ord(I.rb.get(r.id).overall) + ' → ' + ord(I.ra.get(r.id).overall) + '</b></div>';
+    s += '<text class="t" x="0" y="' + (y + 14) + '"' + (k ? ' style="fill:var(--text);font-weight:700"' : '') + '>' + esc(ord(I.ra.get(r.id).overall)) + '  ' + esc(r.t.name.length > 20 ? r.t.name.slice(0, 19) + '…' : r.t.name) + '</text>';
+    if (k && Math.abs(r.a - r.b) > 1e-9) s += '<rect x="' + lab + '" y="' + (y + 2) + '" width="' + sc(r.b) + '" height="16" rx="4" fill="none" stroke="' + fill + '" stroke-dasharray="3 3"/>';
+    s += '<rect class="bar xg" style="--i:' + i + '" x="' + lab + '" y="' + (y + 2) + '" width="' + sc(r.a) + '" height="16" rx="4" fill="' + fill + '" opacity="' + op + '" data-tip="' + esc(tipH) + '"/>';
+    s += '<text class="v" x="' + (lab + Math.max(sc(r.a), sc(r.b)) + 6) + '" y="' + (y + 14) + '">' + f1(r.a) + (k && Math.abs(r.a - r.b) > 0.05 ? ' (' + X.sg(r.a - r.b) + ')' : '') + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Projected league standings after the trade">' + s + '</svg>';
+}
+function teamCard(I, side) {
+  const t = side === 'a' ? I.my : I.pt, b = I.rb.get(t.id), a = I.ra.get(t.id), pb = I.before.get(t.id), pa = I.after.get(t.id); const pts = state.S.mode === 'points';
+  const mv = b.overall - a.overall; const tone = mv > 0 ? 'good' : mv < 0 ? 'crit' : 'none';
+  let rows = '';
+  if (pts) rows = '<tr><td>Fantasy points a week</td><td>' + f1(pb.fp) + '</td><td>' + f1(pa.fp) + '</td><td class="' + (pa.fp >= pb.fp ? 'up' : 'dn') + '">' + X.sg(pa.fp - pb.fp) + '</td></tr>';
+  else cats().forEach(c => { const rb = b.ranks[c.k], ra = a.ranks[c.k], isPct = c.k === 'fg' || c.k === 'ft';
+    rows += '<tr><td>' + c.name + '</td><td>' + pctOr(pb.cats[c.k], isPct) + ' <span class="muted">(' + ord(rb) + ')</span></td><td>' + pctOr(pa.cats[c.k], isPct) + ' <span class="muted">(' + ord(ra) + ')</span></td><td class="' + (ra < rb ? 'up' : ra > rb ? 'dn' : '') + '">' + (ra < rb ? '▲ ' + (rb - ra) : ra > rb ? '▼ ' + (ra - rb) : '–') + '</td></tr>'; });
+  return '<div class="panel lcard rise" style="--c:var(--' + side + ')"><div class="lhead"><div><h3><span class="who ' + side + '"></span>' + esc(t.name) + '</h3><p class="muted small">' + (side === 'a' ? 'Your team' : 'Trade partner') + (t.record ? ' · record ' + esc(t.record) : '') + '</p></div><div class="lrank"><span class="muted small">Projected finish of ' + I.n + '</span><b>' + ord(b.overall) + ' <i class="tone-' + tone + '">→</i> <span class="tone-' + tone + '">' + ord(a.overall) + '</span></b><small class="tone-' + tone + '">' + (mv > 0 ? 'up ' + mv : mv < 0 ? 'down ' + (-mv) : 'no change') + '</small></div></div>'
+    + '<div class="tscroll"><table><thead><tr><th>' + (pts ? '' : 'Category, a week (league rank)') + '</th><th>Now</th><th>After</th><th>Change</th></tr></thead><tbody>' + rows
+    + '<tr class="hist-sep"><td>Lineup value</td><td>' + f1(pb.value) + '</td><td>' + f1(pa.value) + '</td><td class="' + (pa.value >= pb.value ? 'up' : 'dn') + '">' + X.sg(pa.value - pb.value) + '</td></tr>'
+    + '<tr><td>Value, next 14 days</td><td>' + f1(pb.d14) + '</td><td>' + f1(pa.d14) + '</td><td class="' + (pa.d14 >= pb.d14 ? 'up' : 'dn') + '">' + X.sg(pa.d14 - pb.d14) + '</td></tr></tbody></table></div></div>';
+}
+function impactHTML(I) {
+  const pts = state.S.mode === 'points'; let warn = '';
+  if (I.notMine.length) warn += '<div class="banner warn">' + U.I.alert + '<div>' + esc(X.names(I.notMine)) + (I.notMine.length > 1 ? ' are' : ' is') + ' on the "You give" side but not on ' + esc(I.my.name) + '\'s roster. They are left out of the league projection.</div></div>';
+  if (I.notTheirs.length) warn += '<div class="banner warn" style="margin-top:8px">' + U.I.alert + '<div>' + esc(X.names(I.notTheirs)) + (I.notTheirs.length > 1 ? ' are' : ' is') + ' on the "You get" side but not on ' + esc(I.pt.name) + '\'s roster. ' + 'They are still counted for you.</div></div>';
+  if (I.extra) warn += '<div class="banner" style="margin-top:8px">' + U.I.info + '<div>You take back ' + I.extra + ' more player' + (I.extra === 1 ? '' : 's') + ' than you send, so you would have to drop someone. Only your best ' + state.S.starters + ' count in the projection, so the drop is assumed to be your lowest-value player.</div></div>';
+  return (warn ? '<div style="margin-bottom:12px">' + warn + '</div>' : '') + '<div class="cols2">' + teamCard(I, 'a') + teamCard(I, 'b') + '</div>'
+    + '<div class="panel chart rise" style="margin-top:14px"><h3>Projected league standings after the trade</h3><p>' + (pts ? 'Projected fantasy points a week for each team\'s best ' + state.S.starters + ' players, for the rest of the season.' : 'Rotisserie-style category points: each team gets ' + I.n + ' points for leading a category down to 1 for last, using each team\'s best ' + state.S.starters + ' players.') + ' Dashed outlines show where your team and your partner sit today.</p>'
+    + '<div class="legend"><span><i style="--c:var(--a)"></i>' + esc(I.my.name) + '</span><span><i style="--c:var(--b)"></i>' + esc(I.pt.name) + '</span><span><i style="--c:var(--muted)"></i>Rest of the league</span></div>' + standingsChart(I) + '</div>'
+    + '<p class="note">Based on rest-of-season projections with injuries and expected games, about ' + f1(I.wk) + ' weeks left. It ranks the whole season\'s production, not week-to-week matchups, and does not know your waiver moves or which players you will start.</p>';
+}
+function paintL(animate) {
+  const box = $('#leaguebox'); if (!box) return; const e = cur(), d = L.data;
+  const chips = L.list.length ? '<div class="chips" style="margin-top:0">' + L.list.map((x, i) => '<span class="chip' + (i === L.active ? ' on' : '') + '"><button class="linkbtn" data-lsel="' + i + '">' + esc(x.name || PLAT[x.platform] + ' ' + (x.id || '')) + ' <span class="muted">· ' + (PLAT[x.platform] || '') + '</span></button><button class="x" data-ldel="' + i + '" aria-label="Unlink ' + esc(x.name || 'league') + '">' + U.I.x + '</button></span>').join('') + '<button class="btn ghost" data-lnew>+ Link another league</button></div>' : '';
+  const showForm = !L.list.length || L.form;
+  const form = showForm ? '<div class="panel lform"><h3>Link a league</h3><div class="lgrid"><div class="field"><label for="l-plat">Site</label><select id="l-plat">' + Object.keys(PLAT).map(k => '<option value="' + k + '"' + ((L.formPlat || 'espn') === k ? ' selected' : '') + '>' + PLAT[k] + '</option>').join('') + '</select></div>'
+    + ((L.formPlat || 'espn') === 'paste'
+      ? '<div class="field" style="grid-column:span 2"><label for="l-name">League name</label><input type="text" id="l-name" placeholder="Our Yahoo league"></div></div><p class="note" style="margin:0 0 8px">Yahoo doesn\'t let other web pages read leagues, so paste each team instead. On Yahoo, open a team\'s roster page, select all (Ctrl+A), copy, and paste it below. Players are found by name; everything else on the page is ignored.</p><div id="l-teams">' + (L.pasteTeams || [{ name: '', text: '' }, { name: '', text: '' }]).map((t, i) => '<div class="lpaste"><input type="text" data-pn="' + i + '" value="' + esc(t.name) + '" placeholder="Team ' + (i + 1) + ' name"><textarea data-pt="' + i + '" rows="3" placeholder="Paste team ' + (i + 1) + '\'s roster page here">' + esc(t.text) + '</textarea></div>').join('') + '</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-lpadd>+ Another team</button><button class="btn primary" data-lgo>Link league</button>' + (L.list.length ? '<button class="btn ghost" data-lcancel>Cancel</button>' : '') + '</div>'
+      : '<div class="field" style="grid-column:span 2"><label for="l-id">League ID or the address of your league page</label><input type="text" id="l-id" placeholder="' + ({ espn: 'e.g. 75996433, or the fantasy.espn.com league address', sleeper: 'e.g. the number in sleeper.com/leagues/…', fantrax: 'the code in fantrax.com/fantasy/league/…' }[L.formPlat || 'espn']) + '"></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn primary" data-lgo>Link league</button>' + (L.list.length ? '<button class="btn ghost" data-lcancel>Cancel</button>' : '') + '<span class="muted small">' + ({ espn: 'The league must be set to "viewable to public" in ESPN\'s league settings.', sleeper: 'Sleeper leagues can be read without logging in.', fantrax: 'Fantrax leagues can be read without logging in. Scoring has to be set by hand.' }[L.formPlat || 'espn']) + '</span></div>')
+    + '</div>' : '';
+  let body = '';
+  if (L.loading) body = '<div class="panel"><p class="skel" style="width:240px">Loading league</p><p class="muted small" style="margin-top:10px">Reading rosters and team schedules…</p></div>';
+  else if (L.error) body = '<div class="banner crit">' + U.I.alert + '<div><b>The league could not be loaded.</b> ' + esc(L.error) + '</div>' + (e ? '<button class="btn" data-lreload>Try again</button>' : '') + '</div>';
+  else if (e && d) {
+    const S = state.S, st = d.settings || {}; const differs = (st.mode && st.mode !== S.mode) || (st.teams && st.teams !== S.teams) || (st.starters && st.starters !== S.starters);
+    const head = '<div class="panel"><div class="lhead"><div><h3>' + esc(d.name) + '</h3><p class="muted small">' + PLAT[d.platform] + ' · ' + d.teams.length + ' teams · ' + esc(d.scoringLabel) + ' · rosters read ' + X.when(d.at) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">open on ' + PLAT[d.platform] + '</a>' : '') + '</p></div><button class="btn" data-lreload>Reload rosters</button></div>'
+      + (differs ? '<div class="banner" style="margin-top:10px">' + U.I.info + '<div>This league uses ' + ({ points: 'points scoring', cat9: '9 categories', cat8: '8 categories', custom: 'custom categories' }[st.mode || S.mode]) + ' with ' + (st.teams || S.teams) + ' teams. The calculator is set to ' + X.formatName().toLowerCase() + ' with ' + S.teams + ' teams.</div><button class="btn primary" data-lapply>Use this league\'s scoring</button></div>' : '<p class="note" style="margin-top:8px">Using this league\'s scoring and roster size.</p>')
+      + (d.skipped && d.skipped.length ? '<p class="note">Not counted: ' + esc(d.skipped.join('; ')) + '.</p>' : '')
+      + '<div class="lgrid" style="margin-top:12px"><div class="field"><label for="l-my">Your team</label><select id="l-my">' + teamOpt(d, e.my, 'Pick your team') + '</select></div><div class="field"><label for="l-pt">Trading with</label><select id="l-pt">' + teamOpt(d, e.partner, 'Pick the other team') + '</select></div></div></div>';
+    const my = d.teams.find(t => t.id === e.my), pt = d.teams.find(t => t.id === e.partner);
+    let rost = '';
+    if (my || pt) rost = '<div class="cols2" style="margin-top:14px">' + (my ? '<div class="panel" style="--c:var(--a);--soft:var(--a-soft)"><h3><span class="who a"></span>' + esc(my.name) + '</h3><p class="muted small" style="margin-bottom:8px">Tap Give to put a player on the "You give" side. Value is risk-adjusted, rest of season.</p>' + rosterList(my, 'b') + '</div>' : '<div class="empty">Pick your team above.</div>') + (pt ? '<div class="panel" style="--c:var(--b);--soft:var(--b-soft)"><h3><span class="who b"></span>' + esc(pt.name) + '</h3><p class="muted small" style="margin-bottom:8px">Tap Get to put a player on the "You get" side.</p>' + rosterList(pt, 'a') + '</div>' : '<div class="empty">Pick the team you are trading with.</div>') + '</div>';
+    const I = L.impact();
+    const imp = I ? '<h3 style="margin:22px 0 10px;font-size:24px">How this trade changes both teams</h3>' + (state.A.length || state.B.length ? impactHTML(I) : '<div class="empty">Add players from the rosters above to see the effect.</div>') : (my && pt && my.id === pt.id ? '<div class="empty" style="margin-top:14px">Pick two different teams.</div>' : '');
+    body = head + imp + (imp && (state.A.length || state.B.length) ? '<h3 style="margin:22px 0 0;font-size:24px">Rosters</h3>' : '') + rost;
+  }
+  U.paint('leaguebox', chips + form + body, !!animate);
+}
+X.hooks.analysis.push(() => paintL(false));
+X.hooks.boot.push(() => { const e = cur(); if (e) load(e, true); else paintL(); });
+
+/* ---------- events ---------- */
+document.addEventListener('change', ev => {
+  const t = ev.target; const e = cur();
+  if (t.id === 'l-plat') { L.formPlat = t.value; paintL(); }
+  if (t.id === 'l-my' && e) { e.my = t.value || null; if (e.partner === e.my) e.partner = null; saveL(); syncRoster(); L.cache = null; U.recompute(true); paintL(true); }
+  if (t.id === 'l-pt' && e) { e.partner = t.value || null; saveL(); paintL(true); }
+});
+document.addEventListener('input', ev => {
+  const t = ev.target; if (!L.pasteTeams) L.pasteTeams = [{ name: '', text: '' }, { name: '', text: '' }];
+  if (t.dataset.pn != null) L.pasteTeams[+t.dataset.pn].name = t.value;
+  if (t.dataset.pt != null) L.pasteTeams[+t.dataset.pt].text = t.value;
+});
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return; const d = b.dataset;
+  if (d.lgo != null) {
+    const plat = ($('#l-plat') || {}).value || 'espn'; let entry;
+    if (plat === 'paste') {
+      const teams = (L.pasteTeams || []).filter(t => t.text && t.text.trim());
+      if (teams.length < 2) { U.toast('Paste at least two teams.'); return; }
+      entry = { platform: 'paste', id: 'p' + Date.now(), name: (($('#l-name') || {}).value || '').trim() || 'My league', teams };
+    } else {
+      const raw = ($('#l-id') || {}).value || ''; const g = guessPlatform(raw); const p2 = g && g !== 'paste' ? g : plat; const id = parseInput(p2, raw);
+      if (!id) { U.toast('That doesn\'t look like a ' + PLAT[p2] + ' league ID.'); return; }
+      entry = L.list.find(x => x.platform === p2 && x.id === id) || { platform: p2, id, name: '', my: null, partner: null };
+      if (L.list.indexOf(entry) < 0) L.list.push(entry);
+    }
+    if (entry.platform === 'paste') L.list.push(entry);
+    L.active = L.list.indexOf(entry); L.form = false; L.pasteTeams = null; saveL();
+    load(entry).then(() => { if (L.data && L.data.settings && L.data.settings.mode) applyScoring(); });
+  }
+  else if (d.lnew != null) { L.form = true; paintL(); }
+  else if (d.lcancel != null) { L.form = false; paintL(); }
+  else if (d.lpadd != null) { L.pasteTeams = (L.pasteTeams || []).concat([{ name: '', text: '' }]); paintL(); }
+  else if (d.lsel != null) { L.active = +d.lsel; saveL(); load(cur()); }
+  else if (d.ldel != null) { const i = +d.ldel; L.list.splice(i, 1); if (L.active === i) { L.active = L.list.length ? 0 : -1; L.data = null; } else if (L.active > i) L.active--; saveL(); if (cur()) load(cur()); else paintL(); }
+  else if (d.lreload != null) { if (cur()) load(cur()); }
+  else if (d.lapply != null) applyScoring();
+  else if (d.ltog) {
+    const [side, id] = d.ltog.split(','); const list = side === 'a' ? state.A : state.B; const i = list.indexOf(id);
+    if (i >= 0) U.removePlayer(side, id); else U.addPlayer(side, id);
+  }
+});
 })();
 
 </script>
