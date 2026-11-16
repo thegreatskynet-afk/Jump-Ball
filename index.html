@@ -339,6 +339,8 @@ input[type=range]{accent-color:var(--a);width:100%}
 .lrow .btn{padding:5px 12px;min-width:76px;justify-content:center}
 .lrow.on .btn.primary{background:var(--c);border-color:var(--c)}
 .lcard{border-top:3px solid var(--c)}
+.enter .ldot{transform-box:fill-box;transform-origin:center;animation:pop .5s var(--spring) both;animation-delay:calc(var(--i,0)*45ms)}
+.enter .lmove{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw .9s var(--ease) .4s forwards}
 @media (max-width:640px){ .lgrid,.lpaste{grid-template-columns:1fr} .lrank{text-align:left} }
 
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -1245,6 +1247,7 @@ X.sg = (x, f) => { if (!ok(x)) return '–'; const t = (f || X.f1)(Math.abs(x));
 X.when = t => t ? new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'unknown time';
 X.day = t => t ? new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '–';
 X.clock = t => t ? new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '–';
+X.pctTxt = p => !isFinite(p) ? 'far' : p > 500 ? 'over 500%' : X.f0(p) + '%';
 X.ago = t => { if (!t) return 'unknown'; const m = Math.round((Date.now() - t) / 6e4); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); if (h < 36) return h + ' h ago'; return Math.round(h / 24) + ' days ago'; };
 const f0 = X.f0, f1 = X.f1;
 X.unit = () => state.S.mode === 'points' ? 'fantasy points' : 'category value';
@@ -1444,7 +1447,7 @@ X.answers = function () {
 X.finalLine = function () {
   const T = state.trade; if (!T) return ''; const v = T.verdict;
   const lead = v.action === 'Accept' ? 'Yes.' : v.action === 'Reject' ? 'No.' : (T.score >= 50 ? 'It is close to fair.' : 'Not as offered.');
-  const out = JB.OUTLOOKS[state.S.outlook].label.toLowerCase(); const why = T.winner === 'even' ? 'The two sides are within a couple of points of each other after injuries and risk.' : 'After injuries and risk, and weighted for a ' + out + ' outlook, ' + (T.winner === 'A' ? 'you get ' : 'the other side gets ') + (isFinite(T.pctMore) ? f0(T.pctMore) + '% more' : 'far more') + ' value than ' + (T.winner === 'A' ? 'you give.' : 'you do.');
+  const out = JB.OUTLOOKS[state.S.outlook].label.toLowerCase(); const why = T.winner === 'even' ? 'The two sides are within a couple of points of each other after injuries and risk.' : 'After injuries and risk, and weighted for a ' + out + ' outlook, ' + (T.winner === 'A' ? 'you get ' : 'the other side gets ') + X.pctTxt(T.pctMore) + ' more' + ' value than ' + (T.winner === 'A' ? 'you give.' : 'you do.');
   const next = v.action === 'Negotiate' ? (T.score >= 50 ? ' Ask for a small add-on before accepting.' : ' Counter by asking for more, or offering less.') : '';
   return lead + ' ' + why + next + (T.provisional ? ' Provisional: the injury feed is down.' : '');
 };
@@ -1462,19 +1465,19 @@ X.report = function () {
   const all = A.map(e => ({ e, s: 'A' })).concat(B.map(e => ({ e, s: 'B' }))).sort((x, y) => y.e.tvpg - x.e.tvpg);
   let adv, risk;
   const topA = A.slice().sort((x, y) => y.tv.risk - x.tv.risk)[0], riskA = A.slice().sort((x, y) => y.risk.score - x.risk.score)[0];
-  if (T.winner === 'A') adv = 'More total value: ' + (isFinite(T.pctMore) ? f0(T.pctMore) + '% more' : 'far more') + ' than you give up, across the time windows your outlook weights.';
+  if (T.winner === 'A') adv = 'More total value: ' + X.pctTxt(T.pctMore) + ' more' + ' than you give up, across the time windows your outlook weights.';
   else if (all[0].s === 'A') adv = 'You get the best player in the deal, ' + nm(all[0].e) + ' (' + X.pg(all[0].e) + ').';
   else if (T.shortWinner === 'A') adv = 'A better next two weeks: ' + f1(sa.expGames) + ' expected games against ' + f1(sb.expGames) + '.';
   else if (T.A.riskAvg + 5 < T.B.riskAvg) adv = 'Less injury risk: average risk score ' + f0(T.A.riskAvg) + ' against ' + f0(T.B.riskAvg) + '.';
   else adv = topA ? nm(topA) + ' is the main return, at ' + f1(topA.tv.risk) + ' risk-adjusted value.' : '–';
   if (riskA && riskA.risk.score >= 30) risk = nm(riskA) + ' carries a risk score of ' + f0(riskA.risk.score) + ' (' + riskA.risk.parts.map(p => p.label.toLowerCase()).slice(0, 2).join('; ') + ').';
-  else if (T.winner === 'B') risk = 'You give up more than you get: the other side comes away with ' + (isFinite(T.pctMore) ? f0(T.pctMore) + '% more' : 'far more') + ' value.';
+  else if (T.winner === 'B') risk = 'You give up more than you get: the other side comes away with ' + X.pctTxt(T.pctMore) + ' more' + ' value.';
   else if (T.extraA) risk = 'You must drop ' + T.extraA + ' player' + (T.extraA === 1 ? '' : 's') + ' to make room.';
   else risk = 'Projection error: these are estimates built from ' + (state.season.name || 'this season') + ' production and can move with role changes.';
   return {
     verdict: T.verdict, action: T.verdict.action, score: T.score,
     winning: T.winner === 'even' ? 'Neither side: the deal is even after adjustments.' : (T.winner === 'A' ? 'Your side (Team A), receiving ' + names(state.A) + '.' : 'The other side (Team B), receiving ' + names(state.B) + '.'),
-    diff: T.winner === 'even' ? 'Under 4% either way.' : (isFinite(T.pctMore) ? f0(T.pctMore) + '%' : 'Far') + ' more value for ' + (T.winner === 'A' ? 'your side' : 'the other side') + ', weighted for your outlook. Rest of season alone: ' + f1(T.A.risk) + ' coming in against ' + f1(T.B.risk) + ' going out.',
+    diff: T.winner === 'even' ? 'Under 4% either way.' : (isFinite(T.pctMore) && T.pctMore <= 500 ? f0(T.pctMore) + '%' : 'Over 500%') + ' more value for ' + (T.winner === 'A' ? 'your side' : 'the other side') + ', weighted for your outlook. Rest of season alone: ' + f1(T.A.risk) + ' coming in against ' + f1(T.B.risk) + ' going out.',
     injuries: inj, short, long, adv, risk, final: X.finalLine(), notes: T.notes
   };
 };
@@ -1831,7 +1834,7 @@ function paintGauge() {
   const code = (T.provisional ? 'PROVISIONAL: ' : '') + T.verdict.code;
   st.textContent = code; st.className = 'stamp tone-' + T.verdict.tone;
   if (code !== lastVerdict) { st.classList.remove('hit'); g.classList.remove('fire'); void st.offsetWidth; st.classList.add('hit'); g.style.setProperty('--tone', 'var(--' + T.verdict.tone + ')'); g.classList.add('fire'); lastVerdict = code; }
-  line.textContent = T.winner === 'even' ? 'The two sides are about even after injuries and risk.' : (T.winner === 'A' ? 'You get ' : 'You give up ') + (isFinite(T.pctMore) ? f0(T.pctMore) + '% more' : 'far more') + ' value than ' + (T.winner === 'A' ? 'you give' : 'you get back') + ', after injuries and risk.';
+  line.textContent = T.winner === 'even' ? 'The two sides are about even after injuries and risk.' : (T.winner === 'A' ? 'You get ' : 'You give up ') + X.pctTxt(T.pctMore) + ' more' + ' value than ' + (T.winner === 'A' ? 'you give' : 'you get back') + ', after injuries and risk.';
 }
 function paintNotice() {
   let h = '';
@@ -1866,8 +1869,8 @@ function paintVerdict(animate) {
   const tiles = tile('Team A receives (you)', num(T.A.risk, 'tA', 1), pts ? f0(T.A.h.ros.fpProj) + ' projected fantasy points' : 'risk-adjusted trade value')
     + tile('Team B receives', num(T.B.risk, 'tB', 1), pts ? f0(T.B.h.ros.fpProj) + ' projected fantasy points' : 'risk-adjusted trade value')
     + tile('Difference, rest of season', '<span class="tone-' + (T.A.risk >= T.B.risk ? 'good' : 'crit') + '">' + (T.A.risk >= T.B.risk ? '+' : '−') + num(Math.abs(T.A.risk - T.B.risk), 'diff', 1) + '</span>', 'trade-value points, for you')
-    + tile('Overall advantage', isFinite(T.pctMore) ? num(T.pctMore, 'pct', 0, '%') : 'Lopsided', T.winner === 'even' ? 'too close to call' : 'more value to ' + (T.winner === 'A' ? 'you' : 'the other side') + ', all windows')
-    + tile('Short term, 14 days', '<span class="tone-' + (T.comp[2].edge >= 0 ? 'good' : 'crit') + '">' + adv(T.comp[2].edge) + '</span>', isFinite(T.pctMoreShort) && T.shortWinner !== 'even' ? f0(T.pctMoreShort) + '% more value' : 'next two weeks')
+    + tile('Overall advantage', isFinite(T.pctMore) && T.pctMore <= 500 ? num(T.pctMore, 'pct', 0, '%') : '500%+', T.winner === 'even' ? 'too close to call' : 'more value to ' + (T.winner === 'A' ? 'you' : 'the other side') + ', all windows')
+    + tile('Short term, 14 days', '<span class="tone-' + (T.comp[2].edge >= 0 ? 'good' : 'crit') + '">' + adv(T.comp[2].edge) + '</span>', isFinite(T.pctMoreShort) && T.shortWinner !== 'even' ? X.pctTxt(T.pctMoreShort) + ' more value' : 'next two weeks')
     + tile('Long term, rest of season', '<span class="tone-' + (T.riskEdge >= 0 ? 'good' : 'crit') + '">' + adv(T.riskEdge) + '</span>', f1(T.A.risk) + ' vs ' + f1(T.B.risk))
     + tile('Injury-adjusted', num(T.A.inj, 'iA', 1) + ' <small>vs</small> ' + num(T.B.inj, 'iB', 1), 'after expected missed games')
     + tile('On paper', num(T.A.paper, 'pA', 1) + ' <small>vs</small> ' + num(T.B.paper, 'pB', 1), 'if everyone played every game');
@@ -2304,7 +2307,7 @@ async function loadEspn(id) {
       ids.push(pid);
     });
     const rec = (t.record || {}).overall || {};
-    return { id: String(t.id), name: t.name || [t.location, t.nickname].filter(Boolean).join(' ') || ('Team ' + t.id), abbrev: t.abbrev || '', owner: (t.owners || []).map(o => members.get(o)).filter(Boolean).join(', '), record: rec.wins != null ? rec.wins + '-' + rec.losses + (rec.ties ? '-' + rec.ties : '') : '', ids };
+    return { id: String(t.id), name: t.name || [t.location, t.nickname].filter(Boolean).join(' ') || ('Team ' + t.id), abbrev: t.abbrev || '', owner: (t.owners || []).map(o => members.get(o)).filter(n => n && !/^ESPNFAN\d+$/i.test(n)).join(', '), record: rec.wins != null ? rec.wins + '-' + rec.losses + (rec.ties ? '-' + rec.ties : '') : '', ids };
   });
   // scoring
   const items = sc.scoringItems || []; const type = String(sc.scoringType || '');
@@ -2470,15 +2473,22 @@ function standingsChart(I) {
   const ids = I.d.teams.map(t => t.id); const pts = state.S.mode === 'points';
   const val = (r, p, id) => pts ? p.get(id).fp : r.get(id).score;
   const rows = ids.map(id => ({ id, b: val(I.rb, I.before, id), a: val(I.ra, I.after, id), t: I.d.teams.find(t => t.id === id) })).sort((x, y) => y.a - x.a);
-  const mx = Math.max.apply(null, rows.map(r => Math.max(r.a, r.b)).concat([1e-9])); const W = 1000, lab = 230, rh = 26, H = rows.length * rh + 6, sc = v => (W - lab - 70) * Math.max(0, v) / mx;
+  const vals = [].concat.apply([], rows.map(r => [r.a, r.b])); let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  const span = (hi - lo) || 1; lo -= span * 0.06; hi += span * 0.06;
+  const step = (() => { const raw = (hi - lo) / 5, p = Math.pow(10, Math.floor(Math.log10(raw))); return [1, 2, 2.5, 5, 10].map(m => m * p).find(m => m >= raw); })();
+  const W = 1000, lab = 250, R = 120, rh = 30, top = 24, H = rows.length * rh + top + 6, x = v => lab + (W - lab - R) * (v - lo) / (hi - lo);
   let s = '';
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) s += '<line class="gridl" x1="' + x(v) + '" x2="' + x(v) + '" y1="' + (top - 6) + '" y2="' + H + '"/><text text-anchor="middle" x="' + x(v) + '" y="' + (top - 10) + '">' + (step < 1 ? v.toFixed(1) : Math.round(v)) + '</text>';
   rows.forEach((r, i) => {
-    const y = i * rh + 4, k = r.id === I.my.id ? 'a' : r.id === I.pt.id ? 'b' : null; const fill = k ? 'var(--' + k + ')' : 'var(--muted)'; const op = k ? 1 : .35;
-    const tipH = '<b>' + esc(r.t.name) + '</b><div class="row"><span>Now</span><b>' + (pts ? f1(r.b) + ' FP a week' : f1(r.b) + ' category points') + '</b></div><div class="row"><span>After the trade</span><b>' + (pts ? f1(r.a) + ' FP a week' : f1(r.a) + ' category points') + '</b></div><div class="row"><span>Projected finish</span><b>' + ord(I.rb.get(r.id).overall) + ' → ' + ord(I.ra.get(r.id).overall) + '</b></div>';
-    s += '<text class="t" x="0" y="' + (y + 14) + '"' + (k ? ' style="fill:var(--text);font-weight:700"' : '') + '>' + esc(ord(I.ra.get(r.id).overall)) + '  ' + esc(r.t.name.length > 20 ? r.t.name.slice(0, 19) + '…' : r.t.name) + '</text>';
-    if (k && Math.abs(r.a - r.b) > 1e-9) s += '<rect x="' + lab + '" y="' + (y + 2) + '" width="' + sc(r.b) + '" height="16" rx="4" fill="none" stroke="' + fill + '" stroke-dasharray="3 3"/>';
-    s += '<rect class="bar xg" style="--i:' + i + '" x="' + lab + '" y="' + (y + 2) + '" width="' + sc(r.a) + '" height="16" rx="4" fill="' + fill + '" opacity="' + op + '" data-tip="' + esc(tipH) + '"/>';
-    s += '<text class="v" x="' + (lab + Math.max(sc(r.a), sc(r.b)) + 6) + '" y="' + (y + 14) + '">' + f1(r.a) + (k && Math.abs(r.a - r.b) > 0.05 ? ' (' + X.sg(r.a - r.b) + ')' : '') + '</text>';
+    const y = top + i * rh + rh / 2, k = r.id === I.my.id ? 'a' : r.id === I.pt.id ? 'b' : null; const fill = k ? 'var(--' + k + ')' : 'var(--muted)';
+    const tipH = '<b>' + esc(r.t.name) + '</b><div class="row"><span>Now</span><b>' + f1(r.b) + (pts ? ' FP a week' : ' category points') + '</b></div><div class="row"><span>After the trade</span><b>' + f1(r.a) + (pts ? ' FP a week' : ' category points') + '</b></div><div class="row"><span>Projected finish</span><b>' + ord(I.rb.get(r.id).overall) + ' → ' + ord(I.ra.get(r.id).overall) + '</b></div>';
+    if (k) s += '<rect x="0" y="' + (y - rh / 2 + 2) + '" width="' + W + '" height="' + (rh - 4) + '" rx="6" fill="var(--' + k + '-soft)"/>';
+    s += '<text class="t" x="10" y="' + (y + 4) + '"' + (k ? ' style="fill:var(--text);font-weight:700"' : '') + '>' + esc(ord(I.ra.get(r.id).overall)) + '  ' + esc(r.t.name.length > 26 ? r.t.name.slice(0, 25) + '…' : r.t.name.trim()) + '</text>';
+    s += '<line class="gridl" x1="' + lab + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke-dasharray="2 4"/>';
+    const moved = k && Math.abs(r.a - r.b) > 1e-9;
+    if (moved) s += '<line class="lmove" style="--i:' + i + '" x1="' + x(r.b) + '" x2="' + x(r.a) + '" y1="' + y + '" y2="' + y + '" stroke="' + fill + '" stroke-width="3" stroke-linecap="round"/><circle cx="' + x(r.b) + '" cy="' + y + '" r="6" fill="var(--surface)" stroke="' + fill + '" stroke-width="2"/>';
+    s += '<circle class="ldot" style="--i:' + i + '" cx="' + x(r.a) + '" cy="' + y + '" r="' + (k ? 8 : 6) + '" fill="' + fill + '" stroke="var(--surface)" stroke-width="2" data-tip="' + esc(tipH) + '"/>';
+    s += '<text class="v" x="' + (W - R + 12) + '" y="' + (y + 4) + '">' + f1(r.a) + (moved ? ' <tspan class="tone-' + (r.a > r.b ? 'good' : 'crit') + '" style="fill:currentColor">' + X.sg(r.a - r.b) + '</tspan>' : '') + '</text>';
   });
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Projected league standings after the trade">' + s + '</svg>';
 }
@@ -2500,7 +2510,7 @@ function impactHTML(I) {
   if (I.notTheirs.length) warn += '<div class="banner warn" style="margin-top:8px">' + U.I.alert + '<div>' + esc(X.names(I.notTheirs)) + (I.notTheirs.length > 1 ? ' are' : ' is') + ' on the "You get" side but not on ' + esc(I.pt.name) + '\'s roster. ' + 'They are still counted for you.</div></div>';
   if (I.extra) warn += '<div class="banner" style="margin-top:8px">' + U.I.info + '<div>You take back ' + I.extra + ' more player' + (I.extra === 1 ? '' : 's') + ' than you send, so you would have to drop someone. Only your best ' + state.S.starters + ' count in the projection, so the drop is assumed to be your lowest-value player.</div></div>';
   return (warn ? '<div style="margin-bottom:12px">' + warn + '</div>' : '') + '<div class="cols2">' + teamCard(I, 'a') + teamCard(I, 'b') + '</div>'
-    + '<div class="panel chart rise" style="margin-top:14px"><h3>Projected league standings after the trade</h3><p>' + (pts ? 'Projected fantasy points a week for each team\'s best ' + state.S.starters + ' players, for the rest of the season.' : 'Rotisserie-style category points: each team gets ' + I.n + ' points for leading a category down to 1 for last, using each team\'s best ' + state.S.starters + ' players.') + ' Dashed outlines show where your team and your partner sit today.</p>'
+    + '<div class="panel chart rise" style="margin-top:14px"><h3>Projected league standings after the trade</h3><p>' + (pts ? 'Projected fantasy points a week for each team\'s best ' + state.S.starters + ' players, for the rest of the season.' : 'Rotisserie-style category points: each team gets ' + I.n + ' points for leading a category down to 1 for last, using each team\'s best ' + state.S.starters + ' players.') + ' Hollow circles show where your team and your partner sit today; filled dots are after the trade.</p>'
     + '<div class="legend"><span><i style="--c:var(--a)"></i>' + esc(I.my.name) + '</span><span><i style="--c:var(--b)"></i>' + esc(I.pt.name) + '</span><span><i style="--c:var(--muted)"></i>Rest of the league</span></div>' + standingsChart(I) + '</div>'
     + '<p class="note">Based on rest-of-season projections with injuries and expected games, about ' + f1(I.wk) + ' weeks left. It ranks the whole season\'s production, not week-to-week matchups, and does not know your waiver moves or which players you will start.</p>';
 }
