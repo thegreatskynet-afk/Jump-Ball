@@ -1018,7 +1018,35 @@ const CK = 'jumpball.cache.v1.';
 function stash(name, data) { try { localStorage.setItem(CK + name, JSON.stringify({ at: Date.now(), data })); } catch (e) { /* storage full or blocked */ } }
 function unstash(name, maxAgeDays) { try { const c = JSON.parse(localStorage.getItem(CK + name)); if (c && c.at && Date.now() - c.at < maxAgeDays * 864e5) return c; } catch (e) { /* none */ } return null; }
 function useStale(feed, c, err) { const f = feeds[feed]; f.state = 'error'; f.stale = true; f.at = c.at; f.error = explain(err) + '. Showing the copy saved ' + new Date(c.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); f.failed++; emit(); }
-function ok(feed) { const f = feeds[feed]; f.state = 'ok'; f.at = Date.now(); f.error = ''; f.stale = false; f.ok++; emit(); }
+function ok(feed, mm) { const f = feeds[feed]; f.state = 'ok'; f.at = mm ? mm.at : Date.now(); f.source = mm ? 'site' : 'espn'; f.error = ''; f.stale = false; f.ok++; emit(); }
+
+/* ---------- published data: files a GitHub job refreshes next to this page every 15 minutes ----------
+   Read first, because they come from the same site as the page and can't be blocked separately.
+   Falls back to ESPN directly when the files are missing or more than 6 hours old. */
+const MIR = { base: 'data/', meta: null, metaAt: 0, maxAge: 6 * 36e5, sched: null, schedAt: 0 };
+async function mirrorMeta() {
+  if (location.protocol === 'file:') return null;
+  if (MIR.metaAt && Date.now() - MIR.metaAt < 12e4) return MIR.meta;
+  try { const r = await fetch(MIR.base + 'meta.json?t=' + Date.now(), { cache: 'no-store' }); MIR.meta = r.ok ? await r.json() : null; }
+  catch (e) { MIR.meta = null; }
+  MIR.metaAt = Date.now(); return MIR.meta;
+}
+function mirrorFresh(entry) { return entry && entry.ok && entry.at && Date.now() - entry.at * 1000 < MIR.maxAge; }
+async function mirrorFile(file, at) {
+  try { const r = await fetch(MIR.base + file + '?v=' + Math.floor(at), { cache: 'no-cache' }); return r.ok ? await r.json() : null; } catch (e) { return null; }
+}
+async function mirror(feedName, file) {
+  const m = await mirrorMeta(); if (!m) return null; const f = (m.feeds || {})[feedName]; if (!mirrorFresh(f)) return null;
+  const json = await mirrorFile(file, m.at); return json ? { json, at: f.at * 1000 } : null;
+}
+async function mirrorLeague(key) {
+  const m = await mirrorMeta(); if (!m) return null; const f = (m.leagues || {})[key]; if (!mirrorFresh(f)) return null;
+  const json = await mirrorFile('leagues/' + key + '.json', m.at); return json ? { json, at: f.at * 1000 } : null;
+}
+async function mirrorSchedules() {
+  if (MIR.sched && Date.now() - MIR.schedAt < 30 * 6e4) return MIR.sched;
+  MIR.sched = await mirror('schedule', 'schedules.json'); MIR.schedAt = Date.now(); return MIR.sched;
+}
 function fail(feed, err) { const f = feeds[feed]; f.state = 'error'; f.error = explain(err); f.failed++; f.failAt = Date.now(); emit(); }
 function schemaError(msg) { const e = new Error(msg); e.schema = true; return e; }
 
@@ -1075,9 +1103,13 @@ async function loadSeasonStats(feed, year) {
   const url = (page, limit, withSeason) => base + '&page=' + page + '&limit=' + limit + (withSeason ? '&season=' + year + '&seasontype=2' : '');
   try {
     let limit = 250, withSeason = true, first;
-    try { first = await getJSON(url(1, limit, true), feed); }
-    catch (e) { if (e.http === 400 || e.http === 404) { limit = 50; first = await getJSON(url(1, limit, true), feed); } else throw e; }
-    if (!(first.athletes || []).length && feed === 'stats') { withSeason = false; first = await getJSON(url(1, limit, false), feed); }
+    const mm = await mirror(feed, 'stats-' + year + '.json');
+    if (mm && (mm.json.athletes || []).length) first = mm.json;
+    else {
+      try { first = await getJSON(url(1, limit, true), feed); }
+      catch (e) { if (e.http === 400 || e.http === 404) { limit = 50; first = await getJSON(url(1, limit, true), feed); } else throw e; }
+      if (!(first.athletes || []).length && feed === 'stats') { withSeason = false; first = await getJSON(url(1, limit, false), feed); }
+    }
     let players = parseByAthlete(first);
     const pg = first.pagination || {}; const pages = Math.min(20, num(pg.pages) || 1); const srvLimit = num(pg.limit) || limit;
     const rest = []; for (let p = 2; p <= pages; p++) rest.push(p);
@@ -1087,7 +1119,7 @@ async function loadSeasonStats(feed, year) {
     }
     const seen = new Set(); players = players.filter(p => seen.has(p.id) ? false : (seen.add(p.id), true));
     const rs = first.requestedSeason || first.currentSeason || {};
-    feeds[feed].count = players.length; ok(feed);
+    feeds[feed].count = players.length; ok(feed, mm && first === mm.json ? mm : null);
     const out = { players, year: num(rs.year) || year, seasonName: rs.displayName || '' }; stash('stats-' + feed + '-' + year, out);
     return out;
   } catch (e) {
@@ -1121,7 +1153,7 @@ function parseInjuries(json) {
   return { byId, byName, count: n, feedTime: json.timestamp ? Date.parse(json.timestamp) : null };
 }
 async function loadInjuries() {
-  try { const j = await getJSON(SITE + '/injuries', 'injuries'); stash('injuries', j); const r = parseInjuries(j); feeds.injuries.count = r.count; ok('injuries'); return r; }
+  try { const mm = await mirror('injuries', 'injuries.json'); const j = mm ? mm.json : await getJSON(SITE + '/injuries', 'injuries'); stash('injuries', j); const r = parseInjuries(j); feeds.injuries.count = r.count; ok('injuries', mm); return r; }
   catch (e) {
     const c = unstash('injuries', 3);
     if (c) { try { const r = parseInjuries(c.data); r.stale = true; feeds.injuries.count = r.count; useStale('injuries', c, e); return r; } catch (er) { /* bad copy */ } }
@@ -1132,7 +1164,7 @@ async function loadInjuries() {
 /* ---------- standings, news (team names and colors come with the stats feed) ---------- */
 async function loadStandings() {
   try {
-    const j = await getJSON(V2 + '/standings', 'standings'); const m = new Map();
+    const mm = await mirror('standings', 'standings.json'); const j = mm ? mm.json : await getJSON(V2 + '/standings', 'standings'); const m = new Map();
     const walk = node => {
       if (!node || typeof node !== 'object') return;
       if (node.standings && node.standings.entries) node.standings.entries.forEach(en => {
@@ -1147,7 +1179,7 @@ async function loadStandings() {
     if (m.size < 20) throw schemaError('Standings did not include points allowed for every team');
     const sorted = Array.from(m.entries()).sort((a, b) => a[1].pa - b[1].pa);
     sorted.forEach(([id, v], i) => { v.defRank = i + 1; });   // 1 = stingiest defense
-    feeds.standings.count = m.size; ok('standings'); return m;
+    feeds.standings.count = m.size; ok('standings', mm); return m;
   } catch (e) { fail('standings', e); throw e; }
 }
 function parseArticles(list) {
@@ -1158,7 +1190,7 @@ function parseArticles(list) {
   })).filter(a => a.headline);
 }
 async function loadNews() {
-  try { const j = await getJSON(SITE + '/news?limit=50', 'news'); const r = parseArticles(j.articles); feeds.news.count = r.length; ok('news'); return r; }
+  try { const mm = await mirror('news', 'news.json'); const j = mm ? mm.json : await getJSON(SITE + '/news?limit=50', 'news'); const r = parseArticles(j.articles); feeds.news.count = r.length; ok('news', mm); return r; }
   catch (e) { fail('news', e); throw e; }
 }
 
@@ -1179,8 +1211,9 @@ const schedules = new Map();
 async function loadSchedule(teamId, year) {
   const hit = schedules.get(teamId); if (hit && Date.now() - hit.at < TTL.schedule) return hit.events;
   try {
-    const j = await getJSON(SITE + '/teams/' + teamId + '/schedule?seasontype=2&season=' + year, 'schedule');
-    const events = parseSchedule(j); schedules.set(teamId, { events, at: Date.now() }); ok('schedule'); return events;
+    const ms = await mirrorSchedules(); const mj = ms && ms.json[teamId];
+    const j = mj || await getJSON(SITE + '/teams/' + teamId + '/schedule?seasontype=2&season=' + year, 'schedule');
+    const events = parseSchedule(j); schedules.set(teamId, { events, at: Date.now() }); ok('schedule', mj ? ms : null); return events;
   } catch (e) { fail('schedule', e); if (hit) return hit.events; throw e; }
 }
 
@@ -1227,7 +1260,12 @@ const details = new Map();   // id -> { at, games, overview, profile, errors:{} 
 async function loadDetail(id, year) {
   const hit = details.get(id); if (hit && Date.now() - hit.at < TTL.detail) return hit;
   const d = { at: Date.now(), games: hit ? hit.games : null, overview: hit ? hit.overview : null, profile: hit ? hit.profile : null, errors: {} };
-  const one = async (feed, url, parse, key) => { try { d[key] = parse(await getJSON(url, feed)); ok(feed); } catch (e) { fail(feed, e); d.errors[key] = explain(e); } };
+  const mm = await mirror('players', 'p/' + id + '.json'); const pre = mm ? { gamelog: mm.json.gamelog, overview: mm.json.overview, profile: mm.json.profile } : {};
+  const one = async (feed, url, parse, key) => {
+    const got = pre[feed];
+    if (got) { try { d[key] = parse(got); ok(feed, mm); return; } catch (e) { /* fall through to ESPN */ } }
+    try { d[key] = parse(await getJSON(url, feed)); ok(feed); } catch (e) { fail(feed, e); d.errors[key] = explain(e); }
+  };
   await Promise.all([
     one('gamelog', WEB + '/athletes/' + id + '/gamelog' + (year ? '?season=' + year : ''), j => { const from = year ? Date.UTC(year - 1, 8, 1) : 0; return parseGamelog(j).filter(g => g.date >= from); }, 'games'),
     one('overview', WEB + '/athletes/' + id + '/overview', parseOverview, 'overview'),
@@ -1237,7 +1275,7 @@ async function loadDetail(id, year) {
 }
 
 JB.data = {
-  feeds, cfg, TTL, norm, seasonYear, explain, onChange: fn => { listeners.add(fn); },
+  feeds, cfg, TTL, norm, seasonYear, explain, mirrorLeague, mirrorMeta, onChange: fn => { listeners.add(fn); },
   loadSeasonStats, loadInjuries, loadStandings, loadNews, loadSchedule, loadDetail,
   schedules, details, parseByAthlete, parseInjuries, parseGamelog, parseSchedule, parseOverview, parseProfile
 };
@@ -1799,7 +1837,8 @@ function paintLive() {
   else if (!f.stats.at) { cls = ''; txt = 'Connecting to ESPN…'; }
   else if (f.injuries.state === 'error') { cls = 'part'; txt = 'Stats ' + X.clock(f.stats.at) + ' · injury feed down'; }
   else if (f.stats.state === 'error') { cls = 'part'; txt = 'Refresh failed · showing ' + X.clock(f.stats.at); }
-  else txt = 'Live · stats ' + X.clock(f.stats.at) + (f.injuries.at ? ' · injuries ' + X.clock(f.injuries.at) : '');
+  else if (f.injuries.at && Date.now() - f.injuries.at > 2 * 36e5) { cls = 'part'; txt = 'Injury report is ' + X.ago(f.injuries.at).replace(' ago', '') + ' old'; }
+  else txt = 'Live · updated ' + X.ago(Math.min(f.stats.at, f.injuries.at || f.stats.at));
   live.className = 'live ' + cls; $('#liveText').textContent = txt;
   live.dataset.tip = Object.keys(f).map(k => '<div class="row"><span>' + f[k].label + '</span><b>' + (f[k].state === 'ok' ? X.clock(f[k].at) : f[k].state === 'error' ? 'failed' : f[k].state === 'loading' ? 'loading' : 'not needed yet') + '</b></div>').join('');
   const m = $('#feeds'); if (m) m.innerHTML = feedsTable();
@@ -2045,12 +2084,12 @@ function paintReport(animate) {
     + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn" id="copyReport">Copy report as text</button><span class="muted small">Built ' + X.when(Date.now()) + ' from stats updated ' + X.clock(D.feeds.stats.at) + ' and injuries ' + (D.feeds.injuries.at ? 'updated ' + X.clock(D.feeds.injuries.at) : 'unavailable') + '.</span></div></div>', animate);
 }
 function feedsTable() {
-  const f = D.feeds; return '<div class="tscroll"><table class="feeds"><thead><tr><th>Feed</th><th>Status</th><th>Last success</th><th>Detail</th></tr></thead><tbody>' + Object.keys(f).map(k => '<tr><td>' + f[k].label + '</td><td class="st-' + f[k].state + '">' + ({ ok: 'OK', error: 'Failed', loading: 'Loading', idle: 'Not requested' }[f[k].state]) + '</td><td>' + (f[k].at ? X.when(f[k].at) : '–') + '</td><td style="text-align:left;white-space:normal">' + (f[k].state === 'error' ? esc(f[k].error) : (f[k].count ? f[k].count + ' records' : f[k].ok ? f[k].ok + ' requests' : '')) + '</td></tr>').join('') + '</tbody></table></div>';
+  const f = D.feeds; return '<div class="tscroll"><table class="feeds"><thead><tr><th>Feed</th><th>Status</th><th>Data as of</th><th>From</th><th>Detail</th></tr></thead><tbody>' + Object.keys(f).map(k => '<tr><td>' + f[k].label + '</td><td class="st-' + f[k].state + '">' + ({ ok: 'OK', error: 'Failed', loading: 'Loading', idle: 'Not requested' }[f[k].state]) + '</td><td>' + (f[k].at ? X.when(f[k].at) : '–') + '</td><td>' + (f[k].source === 'site' ? 'This site' : f[k].source === 'espn' ? 'ESPN directly' : '–') + '</td><td style="text-align:left;white-space:normal">' + (f[k].state === 'error' ? esc(f[k].error) : (f[k].count ? f[k].count + ' records' : f[k].ok ? f[k].ok + ' requests' : '')) + '</td></tr>').join('') + '</tbody></table></div>';
 }
 function paintMethod() {
   const A = JB.ASSUME, S = state.S, ctx = state.ctx; const pc = x => Math.round(x * 100) + '%';
   paint('method', '<div class="panel"><div class="method">'
-    + '<div><h3>Where the numbers come from</h3><ul><li>Season and last-season averages, game logs, team schedules, the injury report, standings and news all come from ESPN\'s public NBA data feeds, requested by your browser when you open or refresh this page.</li><li>Injuries refresh every 5 minutes, news every 10, stats every 30, while the page is open.</li><li>ESPN\'s injury entries carry the designation, the body part, a dated note and an estimated return date. The return date is ESPN\'s estimate. This page never makes one up.</li><li>Cross-check the official NBA injury report on <a href="https://official.nba.com/" target="_blank" rel="noopener">official.nba.com</a> before a deadline. It is published as a PDF, which a web page cannot read.</li></ul></div>'
+    + '<div><h3>Where the numbers come from</h3><ul><li>Season and last-season averages, game logs, team schedules, the injury report, standings and news all come from ESPN\'s public NBA data feeds.</li><li>A scheduled job on GitHub collects them every 15 minutes and publishes them with this site, so your browser reads them from here and networks that block ESPN still work. GitHub sometimes runs the job a little late.</li><li>If that copy is missing or more than 6 hours old, the page asks ESPN directly. The feed status table shows where each feed came from and how old it is.</li><li>ESPN\'s injury entries carry the designation, the body part, a dated note and an estimated return date. The return date is ESPN\'s estimate. This page never makes one up.</li><li>Cross-check the official NBA injury report on <a href="https://official.nba.com/" target="_blank" rel="noopener">official.nba.com</a> before a deadline. It is published as a PDF, which a web page cannot read.</li></ul></div>'
     + '<div><h3>Player value</h3><ul><li>' + (S.mode === 'points' ? 'Points league: per-game fantasy points from your multipliers.' : 'Category league: each category is scored against the top ' + (ctx ? ctx.N : '') + ' players (standard scores). Percentages are weighted by attempts. Your category weights are applied, then summed.') + '</li><li>Replacement level is the average of the best ' + S.teams + ' players outside the top ' + S.teams * S.roster + ' in your format. Value is what a player adds above that, per game, times the games he is expected to play.</li><li>Trade value 100 equals the best player in your format playing a typical remaining schedule.</li><li>Projection blend: this season by games played, each of the last ' + A.recentN + ' games counted ' + (1 + A.recentBoost) + ' times, and last season as a ' + A.priorGames + '-game prior.</li></ul></div>'
     + '<div><h3>Injury adjustment</h3><ul><li>Out with an ESPN return estimate: every game before that date counts as missed. Out with no date: assumed to miss ' + A.outNoDateDays + ' days.</li><li>Chance to play the next two games: probable ' + pc(A.pPlay.PROBABLE[0]) + ' / ' + pc(A.pPlay.PROBABLE[1]) + ', questionable ' + pc(A.pPlay.QUESTIONABLE[0]) + ' / ' + pc(A.pPlay.QUESTIONABLE[1]) + ', doubtful ' + pc(A.pPlay.DOUBTFUL[0]) + ' / ' + pc(A.pPlay.DOUBTFUL[1]) + ', day-to-day ' + pc(A.pPlay.DTD[0]) + ' / ' + pc(A.pPlay.DTD[1]) + '. These are conventional readings of the designations, not measured rates.</li><li>When ESPN\'s return estimate is within a week, he is not treated as certainly back: the first game on or after that date counts at ' + pc(A.softReturn[0]) + ' and the next at ' + pc(A.softReturn[1]) + '.</li><li>After ' + A.rampAfterMissed + ' or more games missed, the first ' + A.rampGames + ' games back count at ' + pc(A.rampFactor) + '.</li><li>Historical availability (games played over team games, this season and last, blended with a ' + pc(A.availPrior) + ' league-typical rate) scales the games after that, between ' + pc(A.availFloor) + ' and ' + pc(A.availCeil) + '.</li><li>Players ' + A.b2bAge + ' and older lose ' + A.b2bRest + ' of a game per back-to-back for rest.</li><li>You can override the expected missed games on any player\'s card.</li></ul></div>'
     + '<div><h3>Risk and the verdict</h3><ul><li>The risk score adds points for the current designation, games missed this season and last, age, and reduced minutes after a return. Each player\'s breakdown is on his ring.</li><li>Risk-adjusted value discounts rest-of-season value by up to ' + pc(S.riskMax) + ' at a risk score of 100, for setbacks the expected-games math cannot see.</li><li>The trade score blends three comparisons with weights set by your team outlook. 50 is even; 100 means you get at least twice the value.</li><li>When one side gets more players, its extra, lowest-value players count at ' + pc(S.depthFactor) + '.</li></ul></div>'
@@ -2318,8 +2357,9 @@ async function getJSON(url) {
 }
 async function loadEspn(id) {
   const yr = state.season.year; const base = 'https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/' + yr + '/segments/0/leagues/' + id;
-  let j;
-  try { j = await getJSON(base + '?view=mTeam&view=mRoster&view=mSettings'); }
+  let j; const mm = await D.mirrorLeague('espn-' + id);
+  if (mm) { j = mm.json; L.fromSite = mm.at; } else L.fromSite = 0;
+  if (!j) try { j = await getJSON(base + '?view=mTeam&view=mRoster&view=mSettings'); }
   catch (e) {
     if (e.http === 401) throw new Error('This ESPN league is private, so no web page can read it. The league manager can open League → Settings → Basic Settings and turn on "Make League Viewable to Public". It only lets people view the league, not change it.');
     if (e.http === 404) throw new Error('ESPN has no ' + (yr - 1) + '-' + String(yr).slice(2) + ' basketball league with ID ' + id + '. Check the number after leagueId= in your league page\'s address.');
@@ -2411,7 +2451,7 @@ async function load(entry, quiet) {
     else if (entry.platform === 'sleeper') d = await loadSleeper(entry.id);
     else if (entry.platform === 'fantrax') d = await loadFantrax(entry.id);
     else d = loadPaste(entry);
-    d.at = Date.now(); L.data = d; entry.name = d.name;
+    d.at = (d.platform === 'espn' && L.fromSite) || Date.now(); L.data = d; entry.name = d.name;
     if (entry.my == null || !d.teams.some(t => t.id === entry.my)) entry.my = null;
     if (entry.partner != null && !d.teams.some(t => t.id === entry.partner)) entry.partner = null;
     const teams = new Set(); d.teams.forEach(t => t.ids.forEach(id => { const p = state.pool.get(id); if (p && p.teamId) teams.add(p.teamId); }));
