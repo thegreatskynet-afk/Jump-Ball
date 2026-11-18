@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jump Ball Data Check</title>
+<style>
+:root{--bg:#08090a;--panel:#111316;--line:#2a2f36;--text:#eef0f2;--muted:#868e99;--good:#2fd47f;--bad:#ff4d5e;--warn:#ffcc45;--a:#3987e5;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:28px;margin:0 0 6px}
+p{color:var(--muted);margin:0 0 16px;max-width:70ch}
+button{font:inherit;background:var(--a);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+button.ghost{background:var(--panel);border:1px solid var(--line)}
+button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.row{display:grid;grid-template-columns:22px 1fr auto;gap:4px 10px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:8px}
+.row b{font-weight:600}.row small{grid-column:2/4;color:var(--muted);font-size:12.5px;word-break:break-word}
+.dot{width:12px;height:12px;border-radius:50%;margin-top:5px;background:var(--muted)}
+.ok .dot{background:var(--good)}.bad .dot{background:var(--bad)}.warn .dot{background:var(--warn)}
+.st{font-size:13px;font-weight:600}.ok .st{color:var(--good)}.bad .st{color:var(--bad)}.warn .st{color:var(--warn)}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+#msg{color:var(--good);font-size:14px;align-self:center}
+textarea{width:100%;height:160px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+<main>
+<h1>Jump Ball data check</h1>
+<p>This tests every data source the calculator could use, from your browser on your network. When it finishes, tap "Copy results" and paste them into your chat with Claude.</p>
+<div id="list"></div>
+<div class="bar"><button id="copy">Copy results</button><button class="ghost" id="again">Run again</button><span id="msg" role="status"></span></div>
+<textarea id="out" readonly aria-label="Results as text"></textarea>
+</main>
+<script>
+const Y = new Date().getMonth() >= 9 ? new Date().getFullYear() + 1 : new Date().getFullYear(); // NBA season ending year
+const S = Y - 1; // season starting year, as Sleeper labels it
+const TESTS = [
+  ['ESPN stats', 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?region=us&lang=en&contentorigin=espn&isqualified=false&sort=offensive.avgPoints%3Adesc&page=1&limit=2&season=' + Y + '&seasontype=2'],
+  ['ESPN stats, second host', 'https://site.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?region=us&lang=en&contentorigin=espn&isqualified=false&sort=offensive.avgPoints%3Adesc&page=1&limit=2&season=' + Y + '&seasontype=2'],
+  ['ESPN injuries', 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries'],
+  ['ESPN fantasy league', 'https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/' + Y + '/segments/0/leagues/75996433?view=mTeam'],
+  ['Sleeper NBA state', 'https://api.sleeper.app/v1/state/nba'],
+  ['Sleeper NBA players', 'https://api.sleeper.app/v1/players/nba'],
+  ['Sleeper NBA season stats', 'https://api.sleeper.app/v1/stats/nba/regular/' + S],
+  ['Sleeper NBA stats (alt path)', 'https://api.sleeper.app/stats/nba/' + S + '?season_type=regular'],
+  ['Sleeper NBA projections', 'https://api.sleeper.app/projections/nba/' + S + '?season_type=regular'],
+  ['NBA.com schedule', 'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json'],
+  ['NBA.com scoreboard', 'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json'],
+  ['NBA.com stats', 'https://stats.nba.com/stats/leaguedashplayerstats?LeagueID=00&PerMode=PerGame&Season=' + S + '-' + String(Y).slice(2) + '&SeasonType=Regular%20Season&MeasureType=Base&LastNGames=0&Month=0&OpponentTeamID=0&PaceAdjust=N&Period=0&PlusMinus=N&Rank=N&DateFrom=&DateTo=&GameScope=&GameSegment=&Location=&Outcome=&PORound=0&PlayerExperience=&PlayerPosition=&SeasonSegment=&StarterBench=&TeamID=0&VsConference=&VsDivision='],
+  ['Fantrax NBA', 'https://www.fantrax.com/fxea/general/getAdp?sport=NBA'],
+  ['balldontlie', 'https://api.balldontlie.io/v1/players?per_page=1'],
+];
+function shape(j) {
+  // A short, readable outline of the data, so Claude can see its layout without the whole file.
+  const cut = (v, n) => { const t = JSON.stringify(v); return t && t.length > n ? t.slice(0, n) + '…' : t; };
+  if (Array.isArray(j)) return 'array of ' + j.length + '; first: ' + cut(j[0], 600);
+  if (j && typeof j === 'object') {
+    const keys = Object.keys(j);
+    if (keys.length > 40) { const k = keys.find(x => j[x] && typeof j[x] === 'object' && /injur|status|team/i.test(JSON.stringify(j[x]).slice(0, 400))) || keys[0]; return 'object with ' + keys.length + ' keys; sample [' + k + ']: ' + cut(j[k], 700); }
+    return 'keys: ' + keys.join(', ') + ' | ' + cut(j, 700);
+  }
+  return cut(j, 300);
+}
+async function test(name, url) {
+  const t0 = performance.now(); const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ctl.signal }); const text = await r.text(); const ms = Math.round(performance.now() - t0);
+    let j = null; try { j = JSON.parse(text); } catch (e) { /* not JSON */ }
+    if (!r.ok) return { name, cls: 'warn', st: 'HTTP ' + r.status, ms, detail: (j ? shape(j) : text.slice(0, 200)) };
+    if (!j) return { name, cls: 'warn', st: 'not data', ms, detail: 'Got a page instead of data (often a network filter): ' + text.replace(/\s+/g, ' ').slice(0, 200) };
+    return { name, cls: 'ok', st: 'OK', ms, detail: Math.round(text.length / 1024) + ' KB; ' + shape(j) };
+  } catch (e) {
+    return { name, cls: 'bad', st: e.name === 'AbortError' ? 'timed out' : 'blocked', ms: Math.round(performance.now() - t0), detail: String(e) };
+  } finally { clearTimeout(timer); }
+}
+async function run() {
+  const list = document.getElementById('list'), out = document.getElementById('out');
+  list.innerHTML = TESTS.map((t, i) => '<div class="row" id="r' + i + '"><i class="dot"></i><b>' + t[0] + '</b><span class="st">testing…</span></div>').join('');
+  out.value = 'Running…';
+  const res = await Promise.all(TESTS.map(async (t, i) => {
+    const r = await test(t[0], t[1]); const el = document.getElementById('r' + i);
+    el.className = 'row ' + r.cls; el.innerHTML = '<i class="dot"></i><b>' + r.name + '</b><span class="st">' + r.st + ' · ' + r.ms + ' ms</span><small></small>';
+    el.querySelector('small').textContent = r.detail.slice(0, 260); return r;
+  }));
+  out.value = 'Jump Ball data check, ' + new Date().toString() + '\n' + navigator.userAgent + '\n\n' + res.map(r => '## ' + r.name + ': ' + r.st + ' (' + r.ms + ' ms)\n' + r.detail).join('\n\n');
+}
+document.getElementById('copy').addEventListener('click', async () => {
+  const out = document.getElementById('out'), msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out.value); msg.textContent = 'Copied. Paste it into your chat with Claude.'; }
+  catch (e) { out.select(); try { document.execCommand('copy'); msg.textContent = 'Copied. Paste it into your chat with Claude.'; } catch (er) { msg.textContent = 'Copy was blocked. Select the text in the box and copy it.'; } }
+});
+document.getElementById('again').addEventListener('click', run);
+run();
+</script>
+</body>
+</html>
