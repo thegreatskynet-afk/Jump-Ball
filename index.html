@@ -984,23 +984,41 @@ function explain(err) {
   if (err && err.name === 'AbortError') return 'Timed out after 20 seconds';
   if (err && err.http) return 'ESPN answered with HTTP ' + err.http;
   if (err && err.schema) return err.message;
-  if (err instanceof TypeError) return 'The browser could not reach ESPN (offline, blocked by an extension, or cross-origin requests refused)';
+  if (err instanceof TypeError) return 'The browser could not reach ESPN. Common causes: no internet, a school or work network that blocks ESPN, or an ad or content blocker';
   return (err && err.message) || 'Unknown error';
+}
+// ESPN serves the same feeds from two hosts. If one is unreachable or erroring, try the other.
+const altHost = url => url.indexOf('//site.web.api.espn.com/') >= 0 ? url.replace('//site.web.api.espn.com/', '//site.api.espn.com/') : url.indexOf('//site.api.espn.com/') >= 0 ? url.replace('//site.api.espn.com/', '//site.web.api.espn.com/') : null;
+let preferAlt = false;
+async function fetchOnce(url) {
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const full = cfg.proxy ? cfg.proxy + encodeURIComponent(url) : url;
+    const res = await fetch(full, { signal: ctl.signal, cache: 'no-store' });
+    if (!res.ok) { const e = new Error('HTTP ' + res.status); e.http = res.status; throw e; }
+    const text = await res.text();
+    try { return JSON.parse(text); } catch (er) { const e = new Error('ESPN sent something that is not data (often a network filter or sign-in page)'); e.schema = true; throw e; }
+  } finally { clearTimeout(timer); }
 }
 async function getJSON(url, feed) {
   const f = feeds[feed]; const t0 = performance.now();
-  f.state = f.at ? f.state : 'loading'; f.url = url; emit();
-  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
-  try {
-    const full = cfg.proxy ? cfg.proxy + encodeURIComponent(url) : url;
-    let res = await fetch(full, { signal: ctl.signal, cache: 'no-store' });
-    if (res.status === 429 || res.status >= 500) { await new Promise(r => setTimeout(r, 900)); res = await fetch(full, { signal: ctl.signal, cache: 'no-store' }); }
-    if (!res.ok) { const e = new Error('HTTP ' + res.status); e.http = res.status; throw e; }
-    const json = await res.json();
-    f.ms = Math.round(performance.now() - t0); return json;
-  } finally { clearTimeout(timer); }
+  f.state = f.at && !f.stale ? f.state : 'loading'; f.url = url; emit();
+  const alt = altHost(url); const order = alt && preferAlt ? [alt, url] : (alt ? [url, alt] : [url]);
+  let last;
+  for (let i = 0; i < order.length; i++) {
+    for (let k = 0; k < 2; k++) {
+      try { const json = await fetchOnce(order[i]); if (i > 0) preferAlt = order[i] === alt; f.ms = Math.round(performance.now() - t0); return json; }
+      catch (e) { last = e; if (e.http && e.http < 500 && e.http !== 429) { if (e.http === 404 || e.http === 403) break; throw e; } await new Promise(r => setTimeout(r, 600 + 600 * k)); }
+    }
+  }
+  throw last;
 }
-function ok(feed) { const f = feeds[feed]; f.state = 'ok'; f.at = Date.now(); f.error = ''; f.ok++; emit(); }
+/* Last good copy of the big feeds, so an outage shows dated numbers instead of nothing. */
+const CK = 'jumpball.cache.v1.';
+function stash(name, data) { try { localStorage.setItem(CK + name, JSON.stringify({ at: Date.now(), data })); } catch (e) { /* storage full or blocked */ } }
+function unstash(name, maxAgeDays) { try { const c = JSON.parse(localStorage.getItem(CK + name)); if (c && c.at && Date.now() - c.at < maxAgeDays * 864e5) return c; } catch (e) { /* none */ } return null; }
+function useStale(feed, c, err) { const f = feeds[feed]; f.state = 'error'; f.stale = true; f.at = c.at; f.error = explain(err) + '. Showing the copy saved ' + new Date(c.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); f.failed++; emit(); }
+function ok(feed) { const f = feeds[feed]; f.state = 'ok'; f.at = Date.now(); f.error = ''; f.stale = false; f.ok++; emit(); }
 function fail(feed, err) { const f = feeds[feed]; f.state = 'error'; f.error = explain(err); f.failed++; f.failAt = Date.now(); emit(); }
 function schemaError(msg) { const e = new Error(msg); e.schema = true; return e; }
 
@@ -1070,8 +1088,13 @@ async function loadSeasonStats(feed, year) {
     const seen = new Set(); players = players.filter(p => seen.has(p.id) ? false : (seen.add(p.id), true));
     const rs = first.requestedSeason || first.currentSeason || {};
     feeds[feed].count = players.length; ok(feed);
-    return { players, year: num(rs.year) || year, seasonName: rs.displayName || '' };
-  } catch (e) { fail(feed, e); throw e; }
+    const out = { players, year: num(rs.year) || year, seasonName: rs.displayName || '' }; stash('stats-' + feed + '-' + year, out);
+    return out;
+  } catch (e) {
+    const c = unstash('stats-' + feed + '-' + year, feed === 'prev' ? 365 : 14);
+    if (c) { useStale(feed, c, e); return Object.assign({ stale: true }, c.data); }
+    fail(feed, e); throw e;
+  }
 }
 
 /* ---------- injuries ---------- */
@@ -1098,8 +1121,12 @@ function parseInjuries(json) {
   return { byId, byName, count: n, feedTime: json.timestamp ? Date.parse(json.timestamp) : null };
 }
 async function loadInjuries() {
-  try { const j = await getJSON(SITE + '/injuries', 'injuries'); const r = parseInjuries(j); feeds.injuries.count = r.count; ok('injuries'); return r; }
-  catch (e) { fail('injuries', e); throw e; }
+  try { const j = await getJSON(SITE + '/injuries', 'injuries'); stash('injuries', j); const r = parseInjuries(j); feeds.injuries.count = r.count; ok('injuries'); return r; }
+  catch (e) {
+    const c = unstash('injuries', 3);
+    if (c) { try { const r = parseInjuries(c.data); r.stale = true; feeds.injuries.count = r.count; useStale('injuries', c, e); return r; } catch (er) { /* bad copy */ } }
+    fail('injuries', e); throw e;
+  }
 }
 
 /* ---------- standings, news (team names and colors come with the stats feed) ---------- */
@@ -1327,7 +1354,7 @@ X.compute = function () {
     state.flags.set(id, JB.trendFlags(P, S, ctx, now));
   });
   const A = state.A.map(id => state.E.get(id)).filter(Boolean), B = state.B.map(id => state.E.get(id)).filter(Boolean);
-  state.trade = (A.length && B.length) ? JB.evaluateTrade(A, B, S, { injuriesDown: !state.inj }) : null;
+  state.trade = (A.length && B.length) ? JB.evaluateTrade(A, B, S, { injuriesDown: !state.inj || !!state.inj.stale }) : null;
   state.lastCompute = now;
 };
 X.evalList = ids => ids.map(id => state.E.get(id)).filter(Boolean);
@@ -1838,9 +1865,10 @@ function paintGauge() {
 }
 function paintNotice() {
   let h = '';
-  if (state.example) h += '<div class="banner">' + I.info + '<div><b>This is an example trade built from today\'s live numbers.</b> Clear it and search for the players in your own offer.</div><button class="btn" id="clearEx">Clear the example</button></div>';
+  if (state.example) h += '<div class="banner">' + I.info + '<div><b>This is an example trade built from ESPN\'s latest numbers.</b> Clear it and search for the players in your own offer.</div><button class="btn" id="clearEx">Clear the example</button></div>';
   if (state.booted && !state.inj) h += '<div class="banner crit" style="margin-top:8px">' + I.alert + '<div><b>The injury report could not be loaded.</b> ' + esc(D.feeds.injuries.error) + '. Availability has not been checked, so every verdict is provisional until it comes back.</div><button class="btn" data-act="refresh">Try again</button></div>';
-  if (state.booted && D.feeds.stats.state === 'error') h += '<div class="banner warn" style="margin-top:8px">' + I.alert + '<div><b>The last stats refresh failed.</b> ' + esc(D.feeds.stats.error) + '. Showing the numbers from ' + X.when(D.feeds.stats.at) + '.</div></div>';
+  if (state.booted && D.feeds.stats.state === 'error') h += '<div class="banner warn" style="margin-top:8px">' + I.alert + '<div><b>ESPN\'s stats feed can\'t be reached right now.</b> Showing player stats saved ' + X.when(D.feeds.stats.at) + '. They are not current. The page keeps retrying every minute.</div><button class="btn" data-act="refresh">Try again</button></div>';
+  if (state.booted && state.inj && D.feeds.injuries.stale) h += '<div class="banner crit" style="margin-top:8px">' + I.alert + '<div><b>The injury report can\'t be reached right now.</b> Showing the report saved ' + X.when(D.feeds.injuries.at) + '. Anyone hurt since then is not flagged, so treat every verdict as provisional.</div><button class="btn" data-act="refresh">Try again</button></div>';
   if (state.booted && D.feeds.prev.state === 'error') h += '<div class="banner" style="margin-top:8px">' + I.info + '<div>Last season\'s stats could not be loaded, so projections lean on this season only and durability history is shorter.</div></div>';
   $('#notice').innerHTML = h;
 }
